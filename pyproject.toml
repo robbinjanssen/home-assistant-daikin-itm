@@ -1,0 +1,131 @@
+[project]
+name = "home-assistant-daikin-itm"
+version = "1.0.0"
+description = "Control the indoor units of a Daikin intelligent Touch Manager (iTM) with Home Assistant."
+authors = [{ name = "Robbin Janssen", email = "robbinjanssen@gmail.com" }]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.14.2,<3.15"
+dependencies = ["python-daikin-itm"]
+
+[dependency-groups]
+dev = [
+  "codespell==2.4.3",
+  "mypy==2.4.0",
+  "prek==0.5.5",
+  "pylint==4.1.2",
+  "pytest-homeassistant-custom-component==0.13.370",
+  "ruff==0.16.10",
+  "yamllint==1.38.0",
+]
+
+[tool.uv]
+# This repository is a Home Assistant integration, not a Python package.
+package = false
+
+[tool.uv.sources]
+# Develop against the library's main branch, the manifest pins the release.
+python-daikin-itm = { git = "https://github.com/robbinjanssen/python-daikin-itm.git", branch = "main" }
+
+[tool.mypy]
+# Specify the target platform details in config, so your developers are
+# free to run mypy on Windows, Linux, or macOS and get consistent
+# results.
+platform = "linux"
+python_version = "3.14"
+
+# flake8-mypy expects the two following for sensible formatting
+show_column_numbers = true
+
+# show error messages from unrelated files
+follow_imports = "normal"
+
+# suppress errors about unsatisfied imports
+ignore_missing_imports = true
+
+# be strict
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+no_implicit_reexport = true
+strict_optional = true
+warn_incomplete_stub = true
+warn_no_return = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+# Home Assistant re-exports names, e.g. BinarySensorDeviceClass, without __all__.
+module = "homeassistant.*"
+implicit_reexport = true
+
+[tool.pylint.BASIC]
+good-names = ["_", "ex", "fp", "i", "id", "j", "k", "on", "Run", "T"]
+
+[tool.pylint."MESSAGES CONTROL"]
+disable = [
+  # Home Assistant entities implement the async variants of these methods.
+  "abstract-method",
+  "too-few-public-methods",
+  "too-many-positional-arguments",
+  "duplicate-code",
+  "format",
+  "unsubscriptable-object",
+]
+
+[tool.pylint.SIMILARITIES]
+ignore-imports = true
+
+[tool.pylint.FORMAT]
+max-line-length = 88
+
+[tool.pylint.DESIGN]
+max-attributes = 20
+
+[tool.pylint.TYPECHECK]
+# The integration package has the same name as the library, which confuses
+# pylint's import resolution.
+ignored-modules = ["daikin_itm"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py314"
+lint.select = ["ALL"]
+lint.ignore = [
+  "ANN401",  # Opinioated warning on disallowing dynamically typed expressions
+  "CPY001",  # No copyright headers, the LICENSE file covers the project
+  "D203",   # Conflicts with other rules
+  "D213",    # Conflicts with other rules
+  "D417",    # False positives in some occasions
+  "PLR2004", # Just annoying, not really useful
+  "SLOT000", # Has a bug with enums: https://github.com/astral-sh/ruff/issues/5748
+
+  # Conflicts with the Ruff formatter
+  "COM812",
+  "ISC001",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["S101", "S105", "S106", "S107", "SLF001"]
+
+[tool.ruff.lint.flake8-pytest-style]
+mark-parentheses = false
+fixture-parentheses = false
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 25

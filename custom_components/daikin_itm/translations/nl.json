@@ -1,0 +1,94 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Daikin intelligent Touch Manager",
+        "description": "De iTM staat één websessie tegelijk toe. Zorg dat niemand is ingelogd op de webinterface terwijl je dit instelt.",
+        "data": {
+          "host": "Host",
+          "username": "Gebruikersnaam",
+          "password": "Wachtwoord",
+          "zone_path": "Zone met de binnenunits"
+        },
+        "data_description": {
+          "host": "Adres van de iTM, bijvoorbeeld 192.168.1.20. Gebruik een volledig https://-adres als je iTM HTTPS biedt.",
+          "username": "Bij voorkeur een eigen iTM-account voor Home Assistant.",
+          "zone_path": "Pad van zonenamen in de pictogramweergave van de iTM naar de zone met de binnenunits, gescheiden door '/', bijvoorbeeld 'Gebouw/Binnenunits'. Laat leeg als de units op het hoogste niveau staan."
+        }
+      },
+      "reconfigure": {
+        "title": "Daikin intelligent Touch Manager",
+        "description": "Wijzig de verbinding met de iTM. Zorg dat niemand is ingelogd op de webinterface.",
+        "data": {
+          "host": "Host",
+          "username": "Gebruikersnaam",
+          "password": "Wachtwoord",
+          "zone_path": "Zone met de binnenunits"
+        },
+        "data_description": {
+          "host": "Adres van de iTM, bijvoorbeeld 192.168.1.20. Gebruik een volledig https://-adres als je iTM HTTPS biedt.",
+          "username": "Bij voorkeur een eigen iTM-account voor Home Assistant.",
+          "zone_path": "Pad van zonenamen in de pictogramweergave van de iTM naar de zone met de binnenunits, gescheiden door '/', bijvoorbeeld 'Gebouw/Binnenunits'. Laat leeg als de units op het hoogste niveau staan."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan geen verbinding maken met de iTM.",
+      "login_rejected": "Inloggen geweigerd: verkeerde gegevens, of iemand anders is ingelogd op de webinterface.",
+      "zone_not_found": "Zone niet gevonden. Beschikbaar op dat niveau: {available}",
+      "no_units": "Geen binnenunits gevonden op dit niveau. Zones daar: {available}",
+      "unknown": "Onverwachte fout."
+    },
+    "abort": {
+      "already_configured": "Deze iTM is al ingesteld.",
+      "reconfigure_successful": "De instellingen van de iTM zijn gewijzigd."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "room_temperature": {
+        "name": "Ruimtetemperatuur"
+      }
+    },
+    "binary_sensor": {
+      "malfunction": {
+        "name": "Storing"
+      },
+      "filter": {
+        "name": "Filter"
+      }
+    }
+  },
+  "exceptions": {
+    "update_failed": {
+      "message": "Fout bij communicatie met de iTM: {error}"
+    },
+    "login_rejected": {
+      "message": "De iTM weigerde het inloggen: verkeerde gegevens, of iemand anders is ingelogd op de webinterface."
+    },
+    "unit_unavailable": {
+      "message": "Binnenunit {unit} is niet beschikbaar."
+    },
+    "unit_stopped": {
+      "message": "{unit} staat uit. Zet het aan voordat je de temperatuur wijzigt: de iTM negeert de temperatuur van een binnenunit dat uit staat."
+    },
+    "setpoint_out_of_range": {
+      "message": "{unit} accepteert in de huidige modus {min} tot {max} °C, niet {temperature} °C."
+    },
+    "mode_not_supported": {
+      "message": "{unit} ondersteunt modus {mode} niet."
+    },
+    "command_failed": {
+      "message": "De iTM accepteerde de wijziging niet: {error}"
+    },
+    "cannot_connect": {
+      "message": "Kan de iTM niet bereiken: {error}"
+    }
+  },
+  "issues": {
+    "login_rejected": {
+      "title": "De iTM blijft het inloggen weigeren",
+      "description": "De iTM op {host} weigert al {minutes} minuten elke login. Of er is nog iemand ingelogd op de webinterface (die staat één sessie tegelijk toe), of de gebruikersnaam of het wachtwoord is gewijzigd. Log uit op de webinterface, of werk de gegevens bij door de integratie Daikin intelligent Touch Manager opnieuw te configureren."
+    }
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Daikin intelligent Touch Manager",
+        "description": "The iTM allows one web session at a time. Make sure nobody is logged in to its web interface while you set this up.",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password",
+          "zone_path": "Zone with the indoor units"
+        },
+        "data_description": {
+          "host": "Address of the iTM, e.g. 192.168.1.20. Use a full https:// address if your iTM offers HTTPS.",
+          "username": "Preferably a dedicated iTM account for Home Assistant.",
+          "zone_path": "Path of zone names in the iTM icon view to the zone with the indoor units, separated by '/', e.g. 'Building/Indoor units'. Leave empty if the units are at the top level."
+        }
+      },
+      "reconfigure": {
+        "title": "Daikin intelligent Touch Manager",
+        "description": "Change the connection to the iTM. Make sure nobody is logged in to its web interface.",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password",
+          "zone_path": "Zone with the indoor units"
+        },
+        "data_description": {
+          "host": "Address of the iTM, e.g. 192.168.1.20. Use a full https:// address if your iTM offers HTTPS.",
+          "username": "Preferably a dedicated iTM account for Home Assistant.",
+          "zone_path": "Path of zone names in the iTM icon view to the zone with the indoor units, separated by '/', e.g. 'Building/Indoor units'. Leave empty if the units are at the top level."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to the iTM.",
+      "login_rejected": "Login refused: wrong credentials, or someone else is logged in to the web interface.",
+      "zone_not_found": "Zone not found. Available at that level: {available}",
+      "no_units": "No indoor units found at this level. Zones there: {available}",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This iTM is already configured.",
+      "reconfigure_successful": "The iTM settings have been changed."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "room_temperature": {
+        "name": "Room temperature"
+      }
+    },
+    "binary_sensor": {
+      "malfunction": {
+        "name": "Malfunction"
+      },
+      "filter": {
+        "name": "Filter"
+      }
+    }
+  },
+  "exceptions": {
+    "update_failed": {
+      "message": "Error talking to the iTM: {error}"
+    },
+    "login_rejected": {
+      "message": "The iTM refused the login: wrong credentials, or someone else is logged in to the web interface."
+    },
+    "unit_unavailable": {
+      "message": "Unit {unit} is not available."
+    },
+    "unit_stopped": {
+      "message": "{unit} is off. Turn it on before changing the temperature: the iTM ignores the temperature of a unit that is off."
+    },
+    "setpoint_out_of_range": {
+      "message": "{unit} accepts {min} to {max} °C in its current mode, not {temperature} °C."
+    },
+    "mode_not_supported": {
+      "message": "{unit} does not support mode {mode}."
+    },
+    "command_failed": {
+      "message": "The iTM did not accept the change: {error}"
+    },
+    "cannot_connect": {
+      "message": "Could not reach the iTM: {error}"
+    }
+  },
+  "issues": {
+    "login_rejected": {
+      "title": "The iTM keeps refusing the login",
+      "description": "The iTM at {host} has refused every login for {minutes} minutes. Either someone is still logged in to its web interface (it allows one session at a time), or the username or password has changed. Log out of the web interface, or update the credentials by reconfiguring the Daikin intelligent Touch Manager integration."
+    }
+  }
+}
