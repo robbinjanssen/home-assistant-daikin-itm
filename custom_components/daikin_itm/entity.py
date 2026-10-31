@@ -71,6 +71,21 @@ class ItmEntity(CoordinatorEntity[ItmCoordinator]):
         return super().available and self.unit is not None
 
 
+def supports_auto(caps: Capabilities | None) -> bool:
+    """Return if auto mode can control a unit: it must offer heating and cooling.
+
+    Args:
+    ----
+        caps: What the unit offers.
+
+    Returns:
+    -------
+        True if the unit offers heat and cool.
+
+    """
+    return caps is not None and {"heat", "cool"} <= set(caps.modes)
+
+
 def add_entities_for_new_units(
     coordinator: ItmCoordinator,
     async_add_entities: AddConfigEntryEntitiesCallback,

@@ -25,3 +25,9 @@ MAX_TOLERATED_LOGIN_REJECTIONS = 5
 # The iTM refuses a wrong password and a busy web UI in the same way. Once logins have
 # been refused for this many polls in a row, a repair issue asks the user to check.
 LOGIN_REJECTED_ISSUE_AFTER = 30
+# Auto mode: the outdoor temperature from Open-Meteo, read this often.
+WEATHER_INTERVAL = timedelta(minutes=15)
+# Auto mode treats a change at the unit within this long after its own write as its own.
+AUTO_WRITE_GRACE = PENDING_TIMEOUT + timedelta(seconds=30)
+# Fired for every auto mode decision; described in the logbook.
+EVENT_AUTO_MODE = f"{DOMAIN}_auto_mode"

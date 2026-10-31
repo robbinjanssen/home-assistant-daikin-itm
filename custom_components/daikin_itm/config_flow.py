@@ -1,4 +1,7 @@
-"""Config flow: host, credentials and the zone that holds the indoor units."""
+"""Config flow: host, credentials and the zone that holds the indoor units.
+
+The options set the location of the outdoor temperature auto mode uses.
+"""
 
 from __future__ import annotations
 
@@ -7,9 +10,23 @@ from typing import Any
 
 import aiohttp
 import probatio
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlowWithReload,
+)
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_LATITUDE,
+    CONF_LOCATION,
+    CONF_LONGITUDE,
+    CONF_PASSWORD,
+    CONF_USERNAME,
+)
+from homeassistant.core import callback
 from homeassistant.helpers.selector import (
+    LocationSelector,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
@@ -20,6 +37,7 @@ from daikin_itm import ItmError, LoginRejected, ZoneNotFound
 from .api import build_client, unique_id_for_host, zone_path
 from .const import CONF_ZONE_PATH, DEFAULT_ZONE_PATH, DOMAIN, LOGGER
 from .coordinator import HassSessionStore
+from .weather import weather_location
 
 SCHEMA = probatio.Schema(
     {
@@ -37,6 +55,22 @@ class ItmConfigFlow(ConfigFlow, domain=DOMAIN):
     """Set up or change the connection to an iTM."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(_config_entry: ConfigEntry) -> ItmOptionsFlow:
+        """Return the options flow.
+
+        Args:
+        ----
+            _config_entry: The config entry.
+
+        Returns:
+        -------
+            The options flow.
+
+        """
+        return ItmOptionsFlow()
 
     async def _async_validate(
         self, user_input: dict[str, Any]
@@ -144,3 +178,34 @@ class ItmConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders=placeholders,
         )
+
+
+class ItmOptionsFlow(OptionsFlowWithReload):
+    """Change the location of the outdoor temperature for auto mode."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show or save the options.
+
+        Args:
+        ----
+            user_input: The input received from the user or none.
+
+        Returns:
+        -------
+            The saved options or the form.
+
+        """
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+        latitude, longitude = weather_location(self.hass, self.config_entry)
+        schema = probatio.Schema(
+            {
+                probatio.Required(
+                    CONF_LOCATION,
+                    default={CONF_LATITUDE: latitude, CONF_LONGITUDE: longitude},
+                ): LocationSelector()
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)

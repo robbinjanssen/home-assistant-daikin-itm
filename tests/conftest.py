@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
 from daikin_itm import ItmClient
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.daikin_itm.const import DOMAIN
+from custom_components.daikin_itm.weather import OPEN_METEO_URL
 
 from . import DATA
 from .fake_itm import FakeITM
@@ -18,6 +21,9 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
     from homeassistant.core import HomeAssistant
+    from pytest_homeassistant_custom_component.test_util.aiohttp import (
+        AiohttpClientMocker,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -25,6 +31,29 @@ def auto_enable_custom_integrations(
     enable_custom_integrations: None,  # pylint: disable=unused-argument
 ) -> None:
     """Enable custom integrations."""
+
+
+def open_meteo_reply(current: float, hourly: float) -> dict[str, Any]:
+    """Return an Open-Meteo reply: the temperature now, and a steady one every hour."""
+    start = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
+    times = [start + timedelta(hours=h) for h in range(-30, 18)]
+    return {
+        "current": {
+            "time": start.strftime("%Y-%m-%dT%H:%M"),
+            "temperature_2m": current,
+        },
+        "hourly": {
+            "time": [t.strftime("%Y-%m-%dT%H:%M") for t in times],
+            "temperature_2m": [hourly] * len(times),
+        },
+    }
+
+
+@pytest.fixture(autouse=True)
+def open_meteo(aioclient_mock: AiohttpClientMocker) -> AiohttpClientMocker:
+    """Answer the outdoor temperature requests: 9.5 °C now, 8 °C on average."""
+    aioclient_mock.get(OPEN_METEO_URL, json=open_meteo_reply(9.5, 8.0))
+    return aioclient_mock
 
 
 @pytest.fixture

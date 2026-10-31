@@ -11,11 +11,12 @@ from homeassistant.helpers import issue_registry as ir
 from .api import base_url, build_client
 from .const import DOMAIN
 from .coordinator import HassSessionStore, ItmConfigEntry, ItmCoordinator
+from .weather import OutdoorCoordinator
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-PLATFORMS = [Platform.BINARY_SENSOR, Platform.CLIMATE, Platform.SENSOR]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.CLIMATE, Platform.SENSOR, Platform.SWITCH]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ItmConfigEntry) -> bool:
@@ -48,6 +49,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ItmConfigEntry) -> bool:
         configuration_url=base_url(entry.data[CONF_HOST]),
     )
     coordinator.hub_device_id = hub.id
+
+    # For auto mode; without internet auto mode works without outdoor temperatures.
+    coordinator.outdoor = OutdoorCoordinator(hass, entry)
+    await coordinator.outdoor.async_refresh()
+    # Keep it polling also when its sensor is disabled.
+    entry.async_on_unload(coordinator.outdoor.async_add_listener(lambda: None))
 
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

@@ -29,6 +29,7 @@ from daikin_itm import (
 )
 
 from .api import unique_id_for_host
+from .auto_mode import AutoController
 from .const import (
     CONFIRM_INTERVAL,
     DOMAIN,
@@ -44,6 +45,8 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from homeassistant.core import CALLBACK_TYPE, HomeAssistant
+
+    from .weather import OutdoorCoordinator
 
 type ItmConfigEntry = ConfigEntry[ItmCoordinator]
 
@@ -183,6 +186,8 @@ class ItmCoordinator(DataUpdateCoordinator[dict[str, Unit]]):
         self._pending: dict[str, list[PendingChange]] = {}  # by key
         # The device of the iTM itself, set up before the entities.
         self.hub_device_id: str | None = None
+        self.outdoor: OutdoorCoordinator | None = None
+        self._auto: dict[str, AutoController] = {}  # by key
 
     @property
     def _issue_id(self) -> str:
@@ -290,6 +295,20 @@ class ItmCoordinator(DataUpdateCoordinator[dict[str, Unit]]):
         raise UpdateFailed(
             translation_domain=DOMAIN, translation_key="login_rejected"
         ) from err
+
+    def auto_controller(self, key: str) -> AutoController:
+        """Return the auto mode of a unit, shared by its entities.
+
+        Args:
+        ----
+            key: The unit's key.
+
+        Returns:
+        -------
+            The unit's auto mode.
+
+        """
+        return self._auto.setdefault(key, AutoController())
 
     def display_name(self, key: str) -> str:
         """Return a unit's name for people.

@@ -4,6 +4,28 @@
       "filter": {
         "default": "mdi:air-filter"
       }
+    },
+    "sensor": {
+      "outdoor_temperature": {
+        "default": "mdi:sun-thermometer"
+      },
+      "auto_mode": {
+        "default": "mdi:thermostat-auto",
+        "state": {
+          "off": "mdi:thermostat-cog",
+          "heat": "mdi:fire",
+          "cool": "mdi:snowflake",
+          "fan": "mdi:fan"
+        }
+      }
+    },
+    "switch": {
+      "auto_ventilate": {
+        "default": "mdi:fan-auto",
+        "state": {
+          "off": "mdi:fan-off"
+        }
+      }
     }
   }
 }
