@@ -73,7 +73,9 @@ def parse_forecast(data: Any, now: datetime) -> OutdoorTemperature:
         hourly = data["hourly"]
         past = [
             float(value)
-            for time, value in zip(hourly["time"], hourly["temperature_2m"], strict=True)
+            for time, value in zip(
+                hourly["time"], hourly["temperature_2m"], strict=True
+            )
             if value is not None
             and timedelta(0)
             <= now - datetime.fromisoformat(time).replace(tzinfo=UTC)

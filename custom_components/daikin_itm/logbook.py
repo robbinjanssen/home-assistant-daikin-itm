@@ -27,9 +27,7 @@ SENSOR = f"component.{DOMAIN}.entity.sensor.auto_mode"
 @callback
 def async_describe_events(
     hass: HomeAssistant,
-    async_describe_event: Callable[
-        [str, str, Callable[[Event], dict[str, str]]], None
-    ],
+    async_describe_event: Callable[[str, str, Callable[[Event], dict[str, str]]], None],
 ) -> None:
     """Describe the auto mode event.
 

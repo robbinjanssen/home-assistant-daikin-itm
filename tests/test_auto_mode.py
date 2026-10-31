@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -21,7 +22,9 @@ T0 = datetime(2026, 10, 31, 6, 0, tzinfo=UTC)
 MINUTE = timedelta(minutes=1)
 
 
-def _running(mode: Mode, *, ventilate: bool = True, at: datetime = T0) -> AutoController:
+def _running(
+    mode: Mode, *, ventilate: bool = True, at: datetime = T0
+) -> AutoController:
     """Return a controller that has been in a mode for a long time."""
     auto = AutoController()
     auto.ventilate = ventilate
@@ -120,7 +123,17 @@ def test_decide(
 def test_fan_returns_to_cooling() -> None:
     """Test ventilating after cooling cools again when the room warms up."""
     auto = _running(Mode.COOL)
-    auto.commit(auto._decision(T0 - timedelta(hours=1), Mode.FAN, Reason.TARGET_REACHED, 20.4, None))
+    auto.commit(
+        Decision(
+            T0 - timedelta(hours=1),
+            Mode.FAN,
+            Mode.COOL,
+            Reason.TARGET_REACHED,
+            21,
+            20.4,
+            None,
+        )
+    )
     decision = auto.decide(_feed(auto, 21.6), None)
     assert decision is not None
     assert (decision.mode, decision.reason) == (Mode.COOL, Reason.ABOVE_TARGET)
@@ -267,7 +280,7 @@ class Room:
     loss: float = 0.25  # 1/h towards the outdoor temperature
     power: float = 8.0  # °C/h at full power
     thermo_on: bool = True
-    log: list[tuple[datetime, Mode]] = field(default_factory=list)
+    log: list[tuple[datetime, Mode | None]] = field(default_factory=list)
 
     def step(self, hours: float, outdoor: float, gains: float) -> None:
         """Advance the room by a time step."""
@@ -334,7 +347,11 @@ def test_simulated_days_stay_comfortable_without_bouncing(
     switches = len(room.log) - 1
     assert switches / 4 <= MAX_SWITCHES
     # Never from heating to cooling (or back) within two hours.
-    sides = [(t, Mode.HEAT if m is Mode.HEAT else Mode.COOL) for t, m in room.log if m is not Mode.FAN]
-    for (t1, s1), (t2, s2) in zip(sides, sides[1:], strict=False):
+    sides = [
+        (t, Mode.HEAT if m is Mode.HEAT else Mode.COOL)
+        for t, m in room.log
+        if m is not Mode.FAN
+    ]
+    for (t1, s1), (t2, s2) in itertools.pairwise(sides):
         if s1 is not s2:
             assert t2 - t1 >= timedelta(hours=2)

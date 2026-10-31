@@ -64,7 +64,7 @@ OUTDOOR = "sensor.daikin_itm_10_0_0_1_outdoor_temperature"
 
 
 async def _call(
-    hass: HomeAssistant, service: str, entity_id: str = ROOM, **data: object
+    hass: HomeAssistant, service: str, entity_id: str = ROOM, /, **data: object
 ) -> None:
     domain = SWITCH if entity_id.startswith("switch.") else CLIMATE
     await hass.services.async_call(
@@ -351,7 +351,7 @@ async def test_logbook(hass: HomeAssistant) -> None:
         described[event_type] = describe
 
     logbook.async_describe_events(hass, register)
-    event = Event(
+    event: Event = Event(
         EVENT_AUTO_MODE,
         {
             ATTR_ENTITY_ID: ROOM,
@@ -418,7 +418,7 @@ async def test_without_outdoor_temperature(
 )
 def test_unexpected_open_meteo_reply(reply: dict[str, Any]) -> None:
     """Test replies without the temperatures are refused."""
-    with pytest.raises(ValueError, match="reply|24 hours"):
+    with pytest.raises(ValueError, match=r"reply|24 hours"):
         parse_forecast(reply, State("a.b", "x").last_changed)
 
 

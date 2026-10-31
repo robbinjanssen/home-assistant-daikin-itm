@@ -301,7 +301,9 @@ class AutoController:  # pylint: disable=too-many-instance-attributes
         elif current in (Mode.HEAT, Mode.COOL):
             side = Mode(current)
         else:
-            side = Mode.HEAT if temperature is None or temperature < target else Mode.COOL
+            side = (
+                Mode.HEAT if temperature is None or temperature < target else Mode.COOL
+            )
         mode = side
         if temperature is not None:
             deviation = temperature - target
@@ -311,7 +313,9 @@ class AutoController:  # pylint: disable=too-many-instance-attributes
             elif side is Mode.COOL and deviation <= heat_at:
                 side = mode = Mode.HEAT
             elif self.ventilate and (
-                deviation >= FAN_MARGIN if side is Mode.HEAT else deviation <= -FAN_MARGIN
+                deviation >= FAN_MARGIN
+                if side is Mode.HEAT
+                else deviation <= -FAN_MARGIN
             ):
                 mode = Mode.FAN
         return Decision(now, mode, side, Reason.STARTED, target, temperature, outdoor)
@@ -337,12 +341,16 @@ class AutoController:  # pylint: disable=too-many-instance-attributes
         average = self.average(now)
         if self.mode is Mode.FAN and not self.ventilate:
             # The user turned ventilation off: no reason to wait.
-            return self._decision(now, self.side, Reason.VENTILATION_OFF, average, outdoor)
+            return self._decision(
+                now, self.side, Reason.VENTILATION_OFF, average, outdoor
+            )
         if average is None:
             self.waiting = Waiting.HISTORY
             return None
         held: tuple[Mode, Waiting] | None = None
-        for mode, reason, changeover in self._candidates(average - self.target, outdoor):
+        for mode, reason, changeover in self._candidates(
+            average - self.target, outdoor
+        ):
             blocked = self._blocked(now, mode, changeover=changeover)
             if blocked is None:
                 return self._decision(now, mode, reason, average, outdoor)
@@ -379,27 +387,36 @@ class AutoController:  # pylint: disable=too-many-instance-attributes
             candidates.append((self.side, back, False))
         return candidates
 
-    def _blocked(self, now: datetime, mode: Mode, *, changeover: bool) -> Waiting | None:
+    def _blocked(
+        self, now: datetime, mode: Mode, *, changeover: bool
+    ) -> Waiting | None:
         """Return why a change to mode must wait, None when it can be made now."""
-        if self.retry_at and now < self.retry_at:
+        if (self.retry_at and now < self.retry_at) or (
+            self.switched_at and now - self.switched_at < MIN_SWITCH_INTERVAL
+        ):
             return Waiting.INTERVAL
-        if self.switched_at and now - self.switched_at < MIN_SWITCH_INTERVAL:
-            return Waiting.INTERVAL
-        if changeover:
-            if self.side_since and now - self.side_since < CHANGEOVER_DWELL:
-                return Waiting.CHANGEOVER
-            rising = self.trend(now)
-            if (mode is Mode.COOL and rising < -TREND_LIMIT) or (
-                mode is Mode.HEAT and rising > TREND_LIMIT
-            ):
-                return Waiting.TREND
-        if mode is Mode.FAN and self.switched_at and (
-            now - self.switched_at < MIN_ACTIVE_TIME
+        if changeover and (waiting := self._changeover_blocked(now, mode)):
+            return waiting
+        if (
+            mode is Mode.FAN
+            and self.switched_at
+            and (now - self.switched_at < MIN_ACTIVE_TIME)
         ):
             return Waiting.ACTIVE_TIME
         left = MAX_SWITCHES - self.switches_today(now)
         if left <= 0 or (mode is Mode.FAN and left <= FAN_RESERVE):
             return Waiting.BUDGET
+        return None
+
+    def _changeover_blocked(self, now: datetime, mode: Mode) -> Waiting | None:
+        """Return why a changeover to mode must wait, None when it can be made now."""
+        if self.side_since and now - self.side_since < CHANGEOVER_DWELL:
+            return Waiting.CHANGEOVER
+        rising = self.trend(now)
+        if (mode is Mode.COOL and rising < -TREND_LIMIT) or (
+            mode is Mode.HEAT and rising > TREND_LIMIT
+        ):
+            return Waiting.TREND
         return None
 
     def _decision(
@@ -461,7 +478,9 @@ class AutoController:  # pylint: disable=too-many-instance-attributes
         self.commit(decision)
         return decision
 
-    def note(self, now: datetime, reason: Reason, temperature: float | None) -> Decision:
+    def note(
+        self, now: datetime, reason: Reason, temperature: float | None
+    ) -> Decision:
         """Record an event that does not change the mode, e.g. a failed write.
 
         Args:
