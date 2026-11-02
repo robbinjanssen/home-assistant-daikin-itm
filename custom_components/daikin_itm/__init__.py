@@ -51,10 +51,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ItmConfigEntry) -> bool:
     coordinator.hub_device_id = hub.id
 
     # For auto mode; without internet auto mode works without outdoor temperatures.
+    # Keep it polling also when its sensor is disabled, and read it the first time in
+    # the background: setup doesn't wait for the internet.
     coordinator.outdoor = OutdoorCoordinator(hass, entry)
-    await coordinator.outdoor.async_refresh()
-    # Keep it polling also when its sensor is disabled.
     entry.async_on_unload(coordinator.outdoor.async_add_listener(lambda: None))
+    entry.async_create_background_task(
+        hass, coordinator.outdoor.async_refresh(), f"{DOMAIN} outdoor temperature"
+    )
 
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

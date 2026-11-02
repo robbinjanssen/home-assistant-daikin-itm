@@ -20,8 +20,8 @@ from homeassistant.util import dt as dt_util
 from daikin_itm import FAN_SPEEDS
 
 from .auto_mode import Mode, Reason
-from .const import AUTO_WRITE_GRACE, DOMAIN, EVENT_AUTO_MODE, LOGGER
-from .entity import ItmEntity, add_entities_for_new_units, supports_auto
+from .const import DOMAIN, EVENT_AUTO_MODE, LOGGER
+from .entity import ItmEntity, add_entities_for_new_units, rounded, supports_auto
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -84,10 +84,15 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
     self.unit is set.
 
     In auto mode (HVACMode.AUTO, for units that offer heating and cooling) the
-    entity's AutoController chooses heat, cool or fan on every poll, and the target
-    temperature is the controller's. Auto mode stops when another mode is chosen,
-    or when the unit is changed elsewhere (remote controller, iTM). A setpoint
-    changed elsewhere becomes the new target.
+    entity's AutoController chooses heat, cool or fan on every new read of the iTM,
+    and the target temperature is the controller's. Auto mode stops when another
+    mode is chosen, or when the unit is changed elsewhere (remote controller, iTM).
+    A setpoint changed elsewhere becomes the new target.
+
+    Auto mode judges the unit only once no change Home Assistant made is pending in
+    the coordinator, so the unit as read shows its own writes. After a mode change
+    it sets the setpoint on the next read, when the unit shows the new mode and the
+    setpoints it allows in that mode.
     """
 
     _attr_name = None  # the device name
@@ -105,10 +110,13 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
         """
         super().__init__(coordinator, key)
         self._auto = coordinator.auto_controller(key)
-        self._auto_busy = False  # writing for auto mode
-        self._auto_written: datetime | None = None  # last write for auto mode
-        # Whether the unit's setpoint was the target since the last start or restart.
-        self._setpoint_synced = False
+        self._auto_writing = False  # a background write for auto mode is running
+        self._auto_service = False  # a service call is changing auto mode
+        self._seen_read: datetime | None = None  # the read auto mode last acted on
+        # The setpoint auto mode expects the unit to show in its current mode: the
+        # last one it wrote or found. None until known, after a mode change and after
+        # a failed write. Another value at the unit was set elsewhere.
+        self._expected_setpoint: int | None = None
 
     @property
     def supported_features(self) -> ClimateEntityFeature:
@@ -236,6 +244,9 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
         """
         hvac_mode = kwargs.get(ATTR_HVAC_MODE)
         temperature = kwargs.get(ATTR_TEMPERATURE)
+        if hvac_mode is not None:
+            # Home Assistant doesn't check the mode of set_temperature.
+            self._check_mode(hvac_mode)
         if hvac_mode == HVACMode.AUTO and not self._auto.enabled:
             await self._async_start_auto(temperature)
             return
@@ -273,6 +284,25 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
         ----
             hvac_mode: The operation mode, or off.
 
+        """
+        self._check_mode(hvac_mode)
+        if hvac_mode == HVACMode.AUTO:
+            if not self._auto.enabled:
+                await self._async_start_auto(None)
+            return
+        if hvac_mode == HVACMode.OFF:
+            await self.async_turn_off()
+            return
+        self._stop_auto()
+        await self._async_apply_mode(HVAC_TO_MODE[hvac_mode])
+
+    def _check_mode(self, hvac_mode: HVACMode) -> None:
+        """Refuse a mode the unit does not offer.
+
+        Args:
+        ----
+            hvac_mode: The operation mode, or off.
+
         Raises:
         ------
             ServiceValidationError: The unit does not offer the operation mode.
@@ -284,15 +314,6 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
                 translation_key="mode_not_supported",
                 translation_placeholders={"unit": self.display_name, "mode": hvac_mode},
             )
-        if hvac_mode == HVACMode.AUTO:
-            if not self._auto.enabled:
-                await self._async_start_auto(None)
-            return
-        if hvac_mode == HVACMode.OFF:
-            await self.async_turn_off()
-            return
-        self._stop_auto()
-        await self._async_apply_mode(HVAC_TO_MODE[hvac_mode])
 
     async def _async_apply_mode(self, mode: str) -> None:
         """Start the unit in an operation mode.
@@ -363,12 +384,23 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
         outdoor = self.coordinator.outdoor
         return outdoor.mean_24h if outdoor else None
 
+    @property
+    def _fan_offered(self) -> bool:
+        return self.caps is not None and "fan" in self.caps.modes
+
+    def _setpoint_for(self, target: int) -> int:
+        """Return the setpoint for a target: the nearest the unit allows now."""
+        return round(min(max(target, self.min_temp), self.max_temp))
+
     async def async_added_to_hass(self) -> None:
-        """Restore auto mode."""
+        """Restore auto mode, and act on its settings when they change."""
         await super().async_added_to_hass()
         if (data := await self.async_get_last_extra_data()) is not None:
             self._auto.restore(data.as_dict())
             self._auto.notify()
+        self.async_on_remove(
+            self._auto.on_request(lambda: self._run_auto(sample=False))
+        )
 
     @property
     def extra_restore_state_data(self) -> RestoredExtraData:
@@ -377,71 +409,116 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Let auto mode act on the units as read."""
-        self._run_auto()
+        """Let auto mode act on each new read of the iTM.
+
+        Not on the updates that show a change Home Assistant made, nor on the old
+        data the coordinator keeps showing while logins are refused.
+        """
+        read_at = self.coordinator.read_at
+        if read_at is not None and read_at != self._seen_read:
+            self._seen_read = read_at
+            self._run_auto(sample=True)
         super()._handle_coordinator_update()
 
-    def _run_auto(self) -> None:
-        """Feed auto mode the room temperature, and make the change it decides."""
-        auto, unit = self._auto, self.unit
-        if not auto.enabled or self._auto_busy or unit is None:
-            return
-        if not self.coordinator.last_update_success:
-            return  # the iTM was not read (e.g. busy web UI): nothing new to act on
-        now = dt_util.utcnow()
-        if unit.room_temperature is not None:
-            auto.add_sample(now, unit.room_temperature)
-        if self._auto_written is None or now - self._auto_written >= AUTO_WRITE_GRACE:
-            if not unit.running or unit.mode != auto.mode:
-                LOGGER.info(
-                    "%s was changed outside auto mode (%s); auto mode stopped",
-                    self.display_name,
-                    unit.mode if unit.running else "off",
-                )
-                self._record(auto.stop(now, Reason.OVERRIDDEN, unit.room_temperature))
-                return
-            if auto.mode is not Mode.FAN and unit.setpoint is not None:
-                if unit.setpoint == auto.target:
-                    self._setpoint_synced = True
-                elif self._setpoint_synced:
-                    # Changed at the unit: someone wants another temperature.
-                    auto.target = unit.setpoint
-                    self._record(
-                        auto.note(now, Reason.TARGET_CHANGED, unit.room_temperature)
-                    )
-        decision = auto.decide(now, self._outdoor_mean)
-        sync = (
-            not self._setpoint_synced
-            and auto.mode is not Mode.FAN
-            and not (auto.retry_at and now < auto.retry_at)
-        )
-        if decision is None and not sync:
-            auto.notify()  # what it waits for may have changed
-            return
-        self._auto_busy = True
-        self.coordinator.config_entry.async_create_background_task(
-            self.hass,
-            self._async_auto_change(decision),
-            f"{DOMAIN} auto mode {self._key}",
-        )
-
-    async def _async_auto_change(self, decision: Decision | None) -> None:
-        """Switch the unit to the mode auto mode chose, and set the target.
+    def _run_auto(self, *, sample: bool) -> None:
+        """Make the change auto mode decides.
 
         Args:
         ----
-            decision: The change to make, None to only set the target.
+            sample: Feed auto mode the room temperature: the unit was just read.
+
+        """
+        auto, unit, now = self._auto, self.unit, dt_util.utcnow()
+        if not auto.enabled or unit is None:
+            return
+        if sample and unit.room_temperature is not None:
+            auto.add_sample(now, unit.room_temperature)
+        if (
+            self._auto_writing
+            or self._auto_service
+            or self.coordinator.has_pending(self._key)
+        ):
+            return  # judge the unit once it shows the change on its way
+        if not unit.running or unit.mode != auto.mode:
+            LOGGER.info(
+                "%s was changed outside auto mode (%s); auto mode stopped",
+                self.display_name,
+                unit.mode if unit.running else "off",
+            )
+            self._record(auto.stop(now, Reason.OVERRIDDEN, unit.room_temperature))
+            self.async_write_ha_state()
+            return
+        self._check_setpoint(now)
+        auto.fan_offered = self._fan_offered
+        decision = auto.decide(now, self._outdoor_mean)
+        if decision is None and not self._setpoint_to_write(now):
+            return
+        self._auto_writing = True
+        self.coordinator.config_entry.async_create_background_task(
+            self.hass,
+            self._async_auto_change(decision, auto.run),
+            f"{DOMAIN} auto mode {self._key}",
+        )
+
+    def _check_setpoint(self, now: datetime) -> None:
+        """Take a setpoint changed at the unit as the new target."""
+        auto, unit = self._auto, self.unit
+        if unit is None or unit.setpoint is None:
+            return
+        expected = self._expected_setpoint
+        if expected is None:
+            # The unit keeps its setpoint while ventilating; it should show the
+            # target (or the nearest it allows) while heating or cooling.
+            if auto.mode is Mode.FAN or unit.setpoint == self._setpoint_for(
+                auto.target
+            ):
+                self._expected_setpoint = unit.setpoint
+            return
+        if unit.setpoint != expected:
+            LOGGER.info(
+                "The setpoint of %s was changed outside auto mode to %s °C",
+                self.display_name,
+                unit.setpoint,
+            )
+            self._expected_setpoint = auto.target = unit.setpoint
+            self._record(auto.note(now, Reason.TARGET_CHANGED, unit.room_temperature))
+
+    def _setpoint_to_write(self, now: datetime) -> bool:
+        """Return if the unit should get the target as its setpoint now."""
+        auto, unit = self._auto, self.unit
+        return (
+            unit is not None
+            and auto.mode in (Mode.HEAT, Mode.COOL)
+            and unit.setpoint != self._setpoint_for(auto.target)
+            and auto.can_write(now)
+        )
+
+    def _still_running(self, run: int) -> bool:
+        """Return if auto mode still runs as it did when a write started."""
+        return self._auto.enabled and self._auto.run == run
+
+    async def _async_auto_change(self, decision: Decision | None, run: int) -> None:
+        """Switch the unit to the mode auto mode chose, or set the target.
+
+        Args:
+        ----
+            decision: The change to make, None to set the target as setpoint.
+            run: The run of auto mode that decided.
 
         """
         try:
-            if decision is not None and decision.mode is not None:
-                try:
-                    await self._async_apply_mode(decision.mode)
-                except HomeAssistantError as err:
+            if decision is None:
+                await self._async_write_target(run)
+                return
+            mode = decision.mode or decision.side
+            try:
+                await self._async_apply_mode(mode)
+            except HomeAssistantError as err:
+                if self._still_running(run):
                     LOGGER.warning(
                         "Auto mode could not switch %s to %s: %s",
                         self.display_name,
-                        decision.mode,
+                        mode,
                         err,
                     )
                     self._record(
@@ -449,35 +526,30 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
                             dt_util.utcnow(), Reason.WRITE_FAILED, decision.temperature
                         )
                     )
-                    return
-                self._auto_written = dt_util.utcnow()
-                self._auto.commit(decision)
-                self._record(decision)
-            await self._async_sync_setpoint()
+                return
+            if not self._still_running(run):
+                return  # stopped while switching: the user's choice stands
+            self._expected_setpoint = None  # the setpoint follows on the next read
+            self._auto.commit(decision)
+            self._record(decision)
         finally:
-            self._auto_busy = False
+            self._auto_writing = False
             self.async_write_ha_state()
 
-    async def _async_sync_setpoint(self, *, raise_errors: bool = False) -> None:
-        """Make the target the unit's setpoint, while heating or cooling.
+    async def _async_write_target(self, run: int) -> None:
+        """Write the target as the unit's setpoint, recording a failure.
 
         Args:
         ----
-            raise_errors: Raise a failed write instead of recording it.
+            run: The run of auto mode that decided.
 
         """
-        unit, auto = self.unit, self._auto
-        if unit is None or auto.mode in (None, Mode.FAN):
-            return
-        value = auto.target
-        if unit.setpoint_range:
-            value = min(max(value, unit.setpoint_range[0]), unit.setpoint_range[-1])
-        if unit.setpoint != value:
-            try:
-                await self._async_set_setpoint(value)
-            except HomeAssistantError as err:
-                if raise_errors:
-                    raise
+        value = self._setpoint_for(self._auto.target)
+        try:
+            await self._async_set_setpoint(value)
+        except HomeAssistantError as err:
+            self._expected_setpoint = None
+            if self._still_running(run):
                 LOGGER.warning(
                     "Auto mode could not set %s to %s °C: %s",
                     self.display_name,
@@ -485,16 +557,19 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
                     err,
                 )
                 self._record(
-                    auto.note(
-                        dt_util.utcnow(), Reason.WRITE_FAILED, unit.room_temperature
+                    self._auto.note(
+                        dt_util.utcnow(), Reason.WRITE_FAILED, self.current_temperature
                     )
                 )
-                return
-            self._auto_written = dt_util.utcnow()
-        self._setpoint_synced = True
+            return
+        self._expected_setpoint = value
+        self._auto.count_write(dt_util.utcnow())
 
     async def _async_start_auto(self, temperature: float | None) -> None:
-        """Start auto mode.
+        """Start auto mode: switch the unit to the mode it chooses.
+
+        The setpoint follows on the next read, when the unit shows the mode and the
+        setpoints it allows in it.
 
         Args:
         ----
@@ -519,59 +594,63 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
             target = unit.setpoint
         else:
             target = self._auto.target
-        target = round(min(max(target, self.min_temp), self.max_temp))
+        self._auto.fan_offered = self._fan_offered
         decision = self._auto.start(
             dt_util.utcnow(),
-            target,
+            self._setpoint_for(target),
             unit.room_temperature,
             self._outdoor_mean,
             unit.mode if unit.running else None,
         )
-        self._auto_busy = True
+        self._auto_service = True
         try:
             await self._async_apply_mode(decision.mode or decision.side)
-            self._auto_written = dt_util.utcnow()
-            self._auto.commit(decision)
-            self._record(decision)
-            self._setpoint_synced = False
-            await self._async_sync_setpoint(raise_errors=True)
         finally:
-            self._auto_busy = False
-            self.async_write_ha_state()
+            self._auto_service = False
+        self._expected_setpoint = None
+        self._auto.commit(decision)
+        self._record(decision)
+        self.async_write_ha_state()
 
     async def _async_set_auto_target(self, temperature: float) -> None:
-        """Change the target of auto mode.
+        """Change the target of auto mode, and the setpoint while heating or cooling.
 
         Args:
         ----
             temperature: The new target.
 
         """
-        unit = self.unit
-        self._auto.target = round(temperature)
+        auto = self._auto
+        auto.target = round(temperature)
         self._record(
-            self._auto.note(
-                dt_util.utcnow(),
-                Reason.TARGET_CHANGED,
-                unit.room_temperature if unit else None,
-            )
+            auto.note(dt_util.utcnow(), Reason.TARGET_CHANGED, self.current_temperature)
         )
-        self._auto_busy = True
+        unit = self.unit
+        value = self._setpoint_for(auto.target)
         try:
-            await self._async_sync_setpoint(raise_errors=True)
+            if (
+                unit is not None
+                and auto.mode in (Mode.HEAT, Mode.COOL)
+                and unit.setpoint != value
+            ):
+                self._auto_service = True
+                try:
+                    await self._async_set_setpoint(value)
+                except HomeAssistantError:
+                    self._expected_setpoint = None  # auto mode tries again later
+                    raise
+                finally:
+                    self._auto_service = False
+                self._expected_setpoint = value
         finally:
-            self._auto_busy = False
             self.async_write_ha_state()
 
     def _stop_auto(self) -> None:
         """Stop auto mode, because another mode was chosen."""
         if self._auto.enabled:
-            unit = self.unit
             self._record(
                 self._auto.stop(
-                    dt_util.utcnow(),
-                    Reason.MANUAL,
-                    unit.room_temperature if unit else None,
+                    dt_util.utcnow(), Reason.MANUAL, self.current_temperature
                 )
             )
 
@@ -591,11 +670,7 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
                 "mode": decision.mode or "off",
                 "reason": decision.reason,
                 "target": decision.target,
-                "temperature": _rounded(decision.temperature),
-                "outdoor": _rounded(decision.outdoor),
+                "temperature": rounded(decision.temperature),
+                "outdoor": rounded(decision.outdoor),
             },
         )
-
-
-def _rounded(value: float | None) -> float | None:
-    return round(value, 1) if value is not None else None

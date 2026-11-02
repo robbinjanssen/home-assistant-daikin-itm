@@ -71,6 +71,21 @@ class ItmEntity(CoordinatorEntity[ItmCoordinator]):
         return super().available and self.unit is not None
 
 
+def rounded(value: float | None) -> float | None:
+    """Return a temperature rounded to a tenth of a degree, for display.
+
+    Args:
+    ----
+        value: The temperature, or None.
+
+    Returns:
+    -------
+        The rounded temperature, or None.
+
+    """
+    return round(value, 1) if value is not None else None
+
+
 def supports_auto(caps: Capabilities | None) -> bool:
     """Return if auto mode can control a unit: it must offer heating and cooling.
 

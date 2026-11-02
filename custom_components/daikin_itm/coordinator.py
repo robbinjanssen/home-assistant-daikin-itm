@@ -187,6 +187,8 @@ class ItmCoordinator(DataUpdateCoordinator[dict[str, Unit]]):
         # The device of the iTM itself, set up before the entities.
         self.hub_device_id: str | None = None
         self.outdoor: OutdoorCoordinator | None = None
+        # When the units were last read; refused logins keep showing older data.
+        self.read_at: datetime | None = None
         self._auto: dict[str, AutoController] = {}  # by key
 
     @property
@@ -232,6 +234,7 @@ class ItmCoordinator(DataUpdateCoordinator[dict[str, Unit]]):
         if self._rejections >= LOGIN_REJECTED_ISSUE_AFTER:
             ir.async_delete_issue(self.hass, DOMAIN, self._issue_id)
         self._rejections = 0
+        self.read_at = dt_util.utcnow()
         self._read = {
             self._key_by_name[name]: unit
             for name, unit in units.items()
@@ -239,6 +242,20 @@ class ItmCoordinator(DataUpdateCoordinator[dict[str, Unit]]):
         }
         self._drop_settled_changes()
         return self._shown()
+
+    def has_pending(self, key: str) -> bool:
+        """Return if a change to a unit is being written or not yet shown by a poll.
+
+        Args:
+        ----
+            key: The unit's key.
+
+        Returns:
+        -------
+            True while the unit as read may not show a change Home Assistant made.
+
+        """
+        return bool(self._pending.get(key))
 
     def _shown(self) -> dict[str, Unit]:
         """Return the units as last read, with the pending changes on top."""

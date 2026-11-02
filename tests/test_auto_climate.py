@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
+from unittest.mock import patch
 
 import aiohttp
 import pytest
+from daikin_itm import ItmClient
 from homeassistant.components.climate import (
     ATTR_HVAC_ACTION,
     ATTR_HVAC_MODE,
@@ -29,6 +32,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import Event, State
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_capture_events,
@@ -104,12 +108,16 @@ async def test_entities(hass: HomeAssistant) -> None:
 
 
 @pytest.mark.usefixtures("init_integration")
-async def test_start(hass: HomeAssistant, itm: FakeITM) -> None:
-    """Test starting auto mode: heating in autumn, with the target as setpoint."""
+async def test_start(
+    hass: HomeAssistant, itm: FakeITM, freezer: FrozenDateTimeFactory
+) -> None:
+    """Test starting auto mode: heating in autumn, then the target as setpoint."""
     events = async_capture_events(hass, EVENT_AUTO_MODE)
     await _start(hass)
     unit = itm.units[1]
-    assert (unit.mode, unit.setpoint) == ("Verwarmen", 21)
+    assert (unit.mode, unit.setpoint) == ("Verwarmen", 20)
+    await _minutes(hass, freezer, 1)  # the read that shows heating sets the target
+    assert unit.setpoint == 21
     state = state_of(hass, ROOM)
     assert state.state == HVACMode.AUTO
     assert state.attributes[ATTR_TEMPERATURE] == 21
@@ -119,7 +127,7 @@ async def test_start(hass: HomeAssistant, itm: FakeITM) -> None:
     assert sensor.attributes["reason"] == "started"
     assert sensor.attributes["target"] == 21
     assert sensor.attributes["outdoor_temperature"] == 8.0
-    assert sensor.attributes["changes_24h"] == 1
+    assert sensor.attributes["changes_24h"] == 2  # the mode and the setpoint
     assert [e.data["reason"] for e in events] == ["started"]
     assert events[0].data["mode"] == "heat"
 
@@ -133,6 +141,34 @@ async def test_start_with_the_unit_setpoint(hass: HomeAssistant, itm: FakeITM) -
     assert state_of(hass, SENSOR).state == "fan"
     await _call(hass, SERVICE_SET_HVAC_MODE, **{ATTR_HVAC_MODE: HVACMode.AUTO})
     assert state_of(hass, SENSOR).attributes["changes_24h"] == 1  # already on
+
+
+async def test_set_temperature_with_auto_needs_auto_mode(
+    hass: HomeAssistant, itm: FakeITM, mock_config_entry: MockConfigEntry
+) -> None:
+    """Test set_temperature with auto mode on a unit that has none is refused."""
+    itm.units[1].modes = ("Ventilator", "Koelen")
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    with pytest.raises(ServiceValidationError) as err:
+        await _start(hass)
+    assert err.value.translation_key == "mode_not_supported"
+    assert itm.units[1].mode == "Koelen"
+
+
+async def test_no_ventilation_without_fan_mode(
+    hass: HomeAssistant, itm: FakeITM, mock_config_entry: MockConfigEntry
+) -> None:
+    """Test auto mode heats past the target on a unit without fan mode."""
+    itm.units[1].modes = ("Koelen", "Verwarmen")
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get(VENTILATE) is None
+    await _start(hass, target=20)  # 21 °C would ventilate
+    assert itm.units[1].mode == "Verwarmen"
+    assert state_of(hass, SENSOR).state == "heat"
 
 
 async def test_unit_without_heating_has_no_auto_mode(
@@ -180,10 +216,13 @@ async def test_ventilates_when_warm_and_heats_again(
 
 
 @pytest.mark.usefixtures("init_integration")
-async def test_ventilation_turned_off(hass: HomeAssistant, itm: FakeITM) -> None:
+async def test_ventilation_turned_off(
+    hass: HomeAssistant, itm: FakeITM, freezer: FrozenDateTimeFactory
+) -> None:
     """Test turning ventilation off while ventilating heats again right away."""
     await _start(hass, target=20)  # 21 °C: ventilate
     assert itm.units[1].mode == "Ventilator"
+    await _minutes(hass, freezer, 1)
     await _call(hass, "turn_off", VENTILATE)
     await hass.async_block_till_done(wait_background_tasks=True)
     assert state_of(hass, VENTILATE).state == "off"
@@ -320,7 +359,7 @@ async def _restart_in_auto(
     mock_restore_cache_with_extra_data(hass, [(State(ROOM, HVACMode.AUTO), stored)])
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
 
 
 async def test_restored_after_restart(
@@ -397,7 +436,7 @@ async def test_without_outdoor_temperature(
     open_meteo.get(OPEN_METEO_URL, exc=aiohttp.ClientConnectionError("offline"))
     mock_config_entry.add_to_hass(hass)
     await hass.config_entries.async_setup(mock_config_entry.entry_id)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert state_of(hass, OUTDOOR).state == STATE_UNAVAILABLE
     await _start(hass)
     # No season known: the unit was cooling, and the room is at the target.
@@ -447,3 +486,131 @@ async def test_options(
     assert init_integration.options[CONF_LOCATION] == location
     _method, url, _data, _headers = open_meteo.mock_calls[-1]
     assert (url.query["latitude"], url.query["longitude"]) == ("51.93", "6.07")
+
+
+@pytest.mark.usefixtures("init_integration")
+async def test_stopped_while_switching(
+    hass: HomeAssistant, itm: FakeITM, freezer: FrozenDateTimeFactory
+) -> None:
+    """Test a mode chosen while auto mode switches the unit wins."""
+    await _start(hass)
+    itm.units[1].temp = 21.8
+    await _minutes(hass, freezer, 29)  # the next read switches to fan
+    release = asyncio.Event()
+    apply = ItmClient.apply
+    calls = 0
+
+    async def slow_apply(self: ItmClient, *args: Any, **kwargs: Any) -> Any:
+        # Auto mode's write returns late, after the user chose another mode.
+        nonlocal calls
+        calls += 1
+        result = await apply(self, *args, **kwargs)
+        if calls == 1:
+            await release.wait()
+        return result
+
+    with patch.object(ItmClient, "apply", slow_apply):
+        freezer.tick(timedelta(seconds=61))
+        async_fire_time_changed(hass)
+        # The poll runs in the background, and its write blocks: wait for the write.
+        for _ in range(1000):
+            if calls:
+                break
+            await asyncio.sleep(0)
+        assert calls == 1  # auto mode is switching to fan
+        choose = hass.async_create_task(
+            _call(hass, SERVICE_SET_HVAC_MODE, **{ATTR_HVAC_MODE: HVACMode.COOL})
+        )
+        await asyncio.sleep(0)
+        release.set()
+        await choose
+        await hass.async_block_till_done(wait_background_tasks=True)
+    assert itm.units[1].mode == "Koelen"
+    assert state_of(hass, ROOM).state == HVACMode.COOL
+    sensor = state_of(hass, SENSOR)
+    assert (sensor.state, sensor.attributes["reason"]) == ("off", "manual")
+
+
+@pytest.mark.usefixtures("init_integration")
+async def test_target_kept_when_the_unit_allows_less(
+    hass: HomeAssistant, itm: FakeITM, freezer: FrozenDateTimeFactory
+) -> None:
+    """Test the nearest allowed setpoint is used without changing the target."""
+    await _call(hass, "turn_off", VENTILATE)
+    await _start(hass, target=20)  # 21 °C, cold outside: heating
+    unit = itm.units[1]
+    assert unit.mode == "Verwarmen"
+    unit.setpoint_range = (21, 22, 23, 24, 25)  # heating allows 21 °C and up
+    unit.setpoint = 21
+    await _minutes(hass, freezer, 3)
+    assert unit.setpoint == 21
+    assert state_of(hass, ROOM).attributes[ATTR_TEMPERATURE] == 20
+    assert state_of(hass, SENSOR).attributes["reason"] == "started"
+
+
+@pytest.mark.usefixtures("init_integration")
+async def test_failed_target_change_is_tried_again(
+    hass: HomeAssistant, itm: FakeITM, freezer: FrozenDateTimeFactory
+) -> None:
+    """Test a target the iTM did not take is written later, not reverted."""
+    await _start(hass)
+    await _minutes(hass, freezer, 1)
+    itm.fail_next = aiohttp.ClientConnectionError("gone")
+    with pytest.raises(HomeAssistantError):
+        await _call(hass, SERVICE_SET_TEMPERATURE, **{ATTR_TEMPERATURE: 23})
+    assert itm.units[1].setpoint == 21
+    await _minutes(hass, freezer, 2)
+    assert itm.units[1].setpoint == 23
+    assert state_of(hass, ROOM).attributes[ATTR_TEMPERATURE] == 23
+
+
+@pytest.mark.usefixtures("init_integration")
+async def test_setpoint_changed_while_ventilating(
+    hass: HomeAssistant, itm: FakeITM, freezer: FrozenDateTimeFactory
+) -> None:
+    """Test a setpoint chosen at the remote controller while ventilating counts."""
+    await _start(hass, target=20)  # 21 °C: ventilate
+    await _minutes(hass, freezer, 1)
+    itm.units[1].setpoint = 23
+    await _minutes(hass, freezer, 1)
+    assert state_of(hass, ROOM).attributes[ATTR_TEMPERATURE] == 23
+    sensor = state_of(hass, SENSOR)
+    assert (sensor.state, sensor.attributes["reason"]) == ("fan", "target_changed")
+
+
+@pytest.mark.usefixtures("init_integration")
+async def test_refused_logins_add_no_readings(
+    hass: HomeAssistant, itm: FakeITM, freezer: FrozenDateTimeFactory
+) -> None:
+    """Test the old data shown while logins are refused is not taken as readings."""
+    await _start(hass)
+    await _minutes(hass, freezer, 1)
+    events = async_capture_events(hass, EVENT_AUTO_MODE)
+    unit = itm.units[1]
+    unit.temp = 21.8
+    itm.session = "d" * 32  # someone uses the web interface
+    await _minutes(hass, freezer, 20)
+    assert unit.mode == "Verwarmen"
+    assert not events  # no decisions, so no writes that fail
+    itm.session = None
+    await _minutes(hass, freezer, 14)
+    assert unit.mode == "Verwarmen"  # 15 minutes of new readings first
+    await _minutes(hass, freezer, 2)
+    assert unit.mode == "Ventilator"
+
+
+async def test_outdoor_average_kept_for_a_while(
+    init_integration: MockConfigEntry,
+    open_meteo: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Test a failed Open-Meteo read keeps the last average for a few hours."""
+    outdoor = init_integration.runtime_data.outdoor
+    assert outdoor is not None
+    open_meteo.clear_requests()
+    open_meteo.get(OPEN_METEO_URL, exc=aiohttp.ClientConnectionError("offline"))
+    await outdoor.async_refresh()
+    assert not outdoor.last_update_success
+    assert outdoor.mean_24h == 8.0
+    freezer.tick(timedelta(hours=4))
+    assert outdoor.mean_24h is None

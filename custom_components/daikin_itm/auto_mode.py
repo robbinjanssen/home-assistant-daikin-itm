@@ -16,11 +16,11 @@ mentions about 7000 a year):
   (CHANGEOVER_MARGIN), not while the room is already heading back, and not within
   CHANGEOVER_DWELL of the previous changeover. A cold (warm) 24-hour average outdoor
   temperature makes cooling (heating) harder to reach;
-- with ventilation enabled it switches to fan once the room is past the target
-  (FAN_MARGIN), and back when it drifts the other way. Ventilating stops when only
-  FAN_RESERVE changes are left for the day;
-- it makes at most MAX_SWITCHES changes in 24 hours, at least MIN_SWITCH_INTERVAL
-  apart.
+- with ventilation enabled (and a unit that offers fan mode) it switches to fan
+  once the room is past the target (FAN_MARGIN), and back when it drifts the other
+  way. Ventilating stops when only FAN_RESERVE changes are left for the day;
+- it makes at most MAX_SWITCHES changes in 24 hours (mode changes, at least
+  MIN_SWITCH_INTERVAL apart, and the setpoint writes that follow them).
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ SEASON_SPLIT = 16.0
 AVERAGE_WINDOW = timedelta(minutes=20)
 # Decisions wait until the readings cover this much of the window, e.g. after a restart.
 MIN_HISTORY = timedelta(minutes=15)
-# Readings closer together are skipped (the entity also updates on its own writes).
+# Readings closer together are skipped.
 SAMPLE_INTERVAL = timedelta(seconds=30)
 # °C per hour: no changeover to cooling while the room cools faster, and the reverse.
 TREND_LIMIT = 0.3
@@ -58,7 +58,7 @@ TREND_LIMIT = 0.3
 MIN_SWITCH_INTERVAL = timedelta(minutes=20)
 MIN_ACTIVE_TIME = timedelta(minutes=30)  # heating or cooling before ventilating
 CHANGEOVER_DWELL = timedelta(hours=2)
-MAX_SWITCHES = 12  # per 24 hours
+MAX_SWITCHES = 12  # writes per 24 hours: mode changes and setpoints
 FAN_RESERVE = 4
 BUDGET_PERIOD = timedelta(hours=24)
 
@@ -163,18 +163,28 @@ class AutoController:  # pylint: disable=too-many-instance-attributes
         """Initialize auto mode, switched off."""
         self.enabled = False
         self.target = DEFAULT_TARGET
-        self.ventilate = True
+        self.ventilate = True  # the user's choice
+        self.fan_offered = True  # whether the unit offers fan mode
+        # Counts starts and stops, so a write that took a while can tell auto mode
+        # was stopped (and maybe started again) meanwhile.
+        self.run = 0
         self.mode: Mode | None = None
         self.side = Mode.HEAT
         self.switched_at: datetime | None = None  # when the current mode was chosen
         self.side_since: datetime | None = None  # when the current side was chosen
-        self.switches: deque[datetime] = deque()
+        self.switches: deque[datetime] = deque()  # writes, for MAX_SWITCHES
         self.last: Decision | None = None
         self.waiting: Waiting | None = None
         self.wanted: Mode | None = None
         self.retry_at: datetime | None = None
         self._samples: deque[tuple[datetime, float]] = deque()
         self._listeners: list[Callable[[], None]] = []
+        self._request: Callable[[], None] | None = None
+
+    @property
+    def can_ventilate(self) -> bool:
+        """Whether auto mode may switch to fan."""
+        return self.ventilate and self.fan_offered
 
     # -- listeners ------------------------------------------------------------------
     def add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
@@ -196,6 +206,30 @@ class AutoController:  # pylint: disable=too-many-instance-attributes
         """Tell the listeners auto mode changed."""
         for listener in list(self._listeners):
             listener()
+
+    def on_request(self, request: Callable[[], None]) -> Callable[[], None]:
+        """Set what request_decision calls: the entity that writes for auto mode.
+
+        Args:
+        ----
+            request: Decides and makes the change, without a new reading.
+
+        Returns:
+        -------
+            Removes it.
+
+        """
+        self._request = request
+
+        def remove() -> None:
+            self._request = None
+
+        return remove
+
+    def request_decision(self) -> None:
+        """Decide now rather than at the next reading, e.g. after a setting changed."""
+        if self._request is not None:
+            self._request()
 
     # -- room temperature -----------------------------------------------------------
     def add_sample(self, now: datetime, temperature: float) -> None:
@@ -257,7 +291,7 @@ class AutoController:  # pylint: disable=too-many-instance-attributes
         return sum((x - mean_x) * (y - mean_y) for x, y in samples) / var
 
     def switches_today(self, now: datetime) -> int:
-        """Return the number of mode changes in the last 24 hours.
+        """Return the number of writes in the last 24 hours.
 
         Args:
         ----
@@ -271,6 +305,33 @@ class AutoController:  # pylint: disable=too-many-instance-attributes
         while self.switches and now - self.switches[0] >= BUDGET_PERIOD:
             self.switches.popleft()
         return len(self.switches)
+
+    def can_write(self, now: datetime) -> bool:
+        """Return if auto mode may write a setpoint now.
+
+        Args:
+        ----
+            now: The current time.
+
+        Returns:
+        -------
+            False during the wait after a failed write, or with the budget used up.
+
+        """
+        if self.retry_at and now < self.retry_at:
+            return False
+        return self.switches_today(now) < MAX_SWITCHES
+
+    def count_write(self, now: datetime) -> None:
+        """Count a setpoint written by auto mode towards MAX_SWITCHES.
+
+        Args:
+        ----
+            now: When it was written.
+
+        """
+        self.switches.append(now)
+        self.notify()
 
     # -- decisions ------------------------------------------------------------------
     def start(
@@ -312,7 +373,7 @@ class AutoController:  # pylint: disable=too-many-instance-attributes
                 side = mode = Mode.COOL
             elif side is Mode.COOL and deviation <= heat_at:
                 side = mode = Mode.HEAT
-            elif self.ventilate and (
+            elif self.can_ventilate and (
                 deviation >= FAN_MARGIN
                 if side is Mode.HEAT
                 else deviation <= -FAN_MARGIN
@@ -335,29 +396,45 @@ class AutoController:  # pylint: disable=too-many-instance-attributes
             The decision; commit it once the unit is in its mode.
 
         """
-        self.waiting = self.wanted = None
+        before = (self.waiting, self.wanted)
+        decision, self.wanted, self.waiting = self._decide(now, outdoor)
+        if (self.waiting, self.wanted) != before:
+            self.notify()
+        return decision
+
+    def _decide(
+        self, now: datetime, outdoor: float | None
+    ) -> tuple[Decision | None, Mode | None, Waiting | None]:
+        """Return the change to make, or the one held back and why."""
         if not self.enabled or self.mode is None:
-            return None
+            return None, None, None
         average = self.average(now)
-        if self.mode is Mode.FAN and not self.ventilate:
-            # The user turned ventilation off: no reason to wait.
-            return self._decision(
-                now, self.side, Reason.VENTILATION_OFF, average, outdoor
-            )
+        if self.mode is Mode.FAN and not self.can_ventilate:
+            return self._stop_ventilating(now, average, outdoor)
         if average is None:
-            self.waiting = Waiting.HISTORY
-            return None
+            return None, None, Waiting.HISTORY
         held: tuple[Mode, Waiting] | None = None
         for mode, reason, changeover in self._candidates(
             average - self.target, outdoor
         ):
             blocked = self._blocked(now, mode, changeover=changeover)
             if blocked is None:
-                return self._decision(now, mode, reason, average, outdoor)
+                return self._decision(now, mode, reason, average, outdoor), None, None
             held = held or (mode, blocked)
-        if held:
-            self.wanted, self.waiting = held
-        return None
+        if held is None:
+            return None, None, None
+        return None, held[0], held[1]
+
+    def _stop_ventilating(
+        self, now: datetime, average: float | None, outdoor: float | None
+    ) -> tuple[Decision | None, Mode | None, Waiting | None]:
+        """Go back from fan once ventilation is off; only a failed write waits."""
+        if self.retry_at and now < self.retry_at:
+            return None, self.side, Waiting.INTERVAL
+        decision = self._decision(
+            now, self.side, Reason.VENTILATION_OFF, average, outdoor
+        )
+        return decision, None, None
 
     def _candidates(
         self, deviation: float, outdoor: float | None
@@ -381,7 +458,7 @@ class AutoController:  # pylint: disable=too-many-instance-attributes
         candidates = []
         if past:
             candidates.append((other, reason, True))
-        if self.mode is not Mode.FAN and self.ventilate and ahead:
+        if self.mode is not Mode.FAN and self.can_ventilate and ahead:
             candidates.append((Mode.FAN, Reason.TARGET_REACHED, False))
         if self.mode is Mode.FAN and behind:
             candidates.append((self.side, back, False))
@@ -439,12 +516,17 @@ class AutoController:  # pylint: disable=too-many-instance-attributes
             decision: What start or decide returned.
 
         """
+        started = decision.reason is Reason.STARTED
+        if started or decision.mode is None:
+            self.run += 1
         if decision.mode is None:
             self.enabled = False
         else:
             self.enabled = True
-            self.target = decision.target
-            started = decision.reason is Reason.STARTED
+            if started:
+                # Later decisions carry the target from when they were made, which
+                # the user may have changed while the unit switched.
+                self.target = decision.target
             if started or decision.mode is not self.mode:
                 self.switched_at = decision.at
                 self.switches.append(decision.at)

@@ -13,7 +13,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, LOGGER, WEATHER_INTERVAL
+from .const import DOMAIN, LOGGER, WEATHER_INTERVAL, WEATHER_MAX_AGE
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -110,11 +110,19 @@ class OutdoorCoordinator(DataUpdateCoordinator[OutdoorTemperature]):
             update_interval=WEATHER_INTERVAL,
         )
         self.latitude, self.longitude = weather_location(hass, entry)
+        self.fetched_at: datetime | None = None
 
     @property
     def mean_24h(self) -> float | None:
-        """The 24-hour average outdoor temperature, None when unknown."""
-        return self.data.mean_24h if self.data and self.last_update_success else None
+        """The 24-hour average outdoor temperature, None when unknown.
+
+        A failed read keeps the last average for WEATHER_MAX_AGE.
+        """
+        if self.data is None or self.fetched_at is None:
+            return None
+        if dt_util.utcnow() - self.fetched_at > WEATHER_MAX_AGE:
+            return None
+        return self.data.mean_24h
 
     async def _async_update_data(self) -> OutdoorTemperature:
         """Read the temperatures.
@@ -144,10 +152,12 @@ class OutdoorCoordinator(DataUpdateCoordinator[OutdoorTemperature]):
                     OPEN_METEO_URL, params=params, raise_for_status=True
                 )
                 data = await response.json()
-            return parse_forecast(data, dt_util.utcnow())
+            temperature = parse_forecast(data, dt_util.utcnow())
         except (aiohttp.ClientError, TimeoutError, ValueError) as err:
             raise UpdateFailed(
                 translation_domain=DOMAIN,
                 translation_key="weather_failed",
                 translation_placeholders={"error": str(err)},
             ) from err
+        self.fetched_at = dt_util.utcnow()
+        return temperature

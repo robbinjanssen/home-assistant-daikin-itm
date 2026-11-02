@@ -74,14 +74,17 @@ limited number of setting changes lasts:
   1.5 °C below it; not within 2 hours of the previous changeover, and not while the room is already
   heading back. When the outdoor temperature averaged over 24 hours is below 12 °C, cooling starts only
   at 2.5 °C above the target; above 20 °C heating starts only at 2.5 °C below it.
-- With **Ventilate in auto mode** on (the default) it switches to fan once the room is 0.5 °C past the
-  target after at least 30 minutes of heating or cooling, which saves energy, and back to heating (or
-  cooling) when the room is 0.5 °C on the other side.
-- It makes at most **12 changes a day**, at least 20 minutes apart, and stops ventilating when only 4 are
-  left.
+- With **Ventilate in auto mode** on (the default, for units that offer fan mode) it switches to fan once
+  the room is 0.5 °C past the target after at least 30 minutes of heating or cooling, which saves energy,
+  and back to heating (or cooling) when the room is 0.5 °C on the other side.
+- It writes at most **12 changes a day**: mode changes, at least 20 minutes apart, and the setpoints it
+  sets after them. It stops ventilating when only 4 are left. After a mode change it sets the setpoint
+  on the next read, when the unit shows the new mode; when the unit doesn't allow the target in that
+  mode, it uses the nearest setpoint and keeps the target.
 - Changing the temperature changes the target. Choosing another mode, or changing the mode at the remote
   controller or in the iTM, stops auto mode. A setpoint changed at the remote controller becomes the new
-  target.
+  target, also while ventilating.
+- While logins are refused (someone uses the iTM's web interface) it doesn't decide on the old readings.
 
 The **Auto mode** sensor shows the mode auto mode chose. Its attributes show the reason, since when, the
 room and outdoor temperature it was based on, the number of changes in the last 24 hours, and which change
@@ -91,7 +94,8 @@ fired as a `daikin_itm_auto_mode` event for automations.
 
 The outdoor temperature comes from [Open-Meteo.com](https://open-meteo.com/) every 15 minutes, for the
 location of Home Assistant. To use another location, choose **Configure** in the integration's menu.
-Without internet, auto mode works without the outdoor temperature.
+When Open-Meteo can't be read, auto mode keeps the last average for 3 hours; without internet it works
+without the outdoor temperature.
 
 ## Things to know
 

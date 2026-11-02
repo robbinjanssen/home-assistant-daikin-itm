@@ -79,6 +79,53 @@ def test_start_without_ventilation() -> None:
     assert auto.start(T0, 21, 21.7, 5.0, None).mode is Mode.HEAT
 
 
+def test_no_ventilation_without_fan_mode() -> None:
+    """Test a unit without fan mode keeps heating past the target."""
+    auto = AutoController()
+    auto.fan_offered = False
+    assert auto.start(T0, 21, 21.7, 5.0, None).mode is Mode.HEAT
+    auto = _running(Mode.HEAT)
+    auto.fan_offered = False
+    assert auto.decide(_feed(auto, 21.8), None) is None
+
+
+def test_commit_keeps_a_target_changed_meanwhile() -> None:
+    """Test a decision made before the target changed doesn't revert it."""
+    auto = _running(Mode.HEAT)
+    decision = auto.decide(_feed(auto, 21.8), None)
+    assert decision is not None
+    auto.target = 23
+    auto.commit(decision)
+    assert auto.target == 23
+
+
+def test_runs_and_setpoint_writes() -> None:
+    """Test starts and stops count as runs, and setpoint writes use the budget."""
+    auto = AutoController()
+    auto.commit(auto.start(T0, 21, 21.0, None, None))
+    assert auto.run == 1
+    auto.stop(T0, Reason.MANUAL)
+    assert auto.run == 2
+    auto.commit(auto.start(T0, 21, 21.0, None, None))
+    assert auto.can_write(T0)
+    for _ in range(MAX_SWITCHES - 2):
+        auto.count_write(T0)
+    assert not auto.can_write(T0)
+    assert auto.can_write(T0 + timedelta(hours=25))
+
+
+def test_request_decision() -> None:
+    """Test a request reaches the entity that set it, until it is removed."""
+    auto = AutoController()
+    calls: list[None] = []
+    auto.request_decision()  # nobody listening
+    remove = auto.on_request(lambda: calls.append(None))
+    auto.request_decision()
+    remove()
+    auto.request_decision()
+    assert len(calls) == 1
+
+
 def test_waits_for_history() -> None:
     """Test no decision is taken on a few readings."""
     auto = _running(Mode.HEAT)
@@ -154,6 +201,19 @@ def test_ventilation_turned_off_while_ventilating() -> None:
     decision = auto.decide(now, None)
     assert decision is not None
     assert (decision.mode, decision.reason) == (Mode.HEAT, Reason.VENTILATION_OFF)
+
+
+def test_ventilation_turned_off_after_a_failed_write() -> None:
+    """Test going back from fan waits after a failed write, like other changes."""
+    auto = _running(Mode.FAN)
+    now = _feed(auto, 21.0)
+    auto.ventilate = False
+    auto.note(now, Reason.WRITE_FAILED, 21.0)
+    assert auto.decide(now + MINUTE, None) is None
+    assert (auto.wanted, auto.waiting) == (Mode.HEAT, Waiting.INTERVAL)
+    decision = auto.decide(now + timedelta(minutes=21), None)
+    assert decision is not None
+    assert decision.reason is Reason.VENTILATION_OFF
 
 
 def test_minimum_interval() -> None:

@@ -91,5 +91,5 @@ class ItmAutoVentilateSwitch(ItmEntity, SwitchEntity):
     def _set(self, *, ventilate: bool) -> None:
         self._auto.ventilate = ventilate
         self._auto.notify()
-        # Let the climate entity act on it now rather than at the next poll.
-        self.coordinator.async_update_listeners()
+        # Let the unit's climate entity act on it now rather than at the next poll.
+        self._auto.request_decision()

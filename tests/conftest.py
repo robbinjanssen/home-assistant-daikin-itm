@@ -98,5 +98,5 @@ async def init_integration(
     """Set up the integration with the simulated iTM."""
     mock_config_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)  # outdoor temperature
     return mock_config_entry

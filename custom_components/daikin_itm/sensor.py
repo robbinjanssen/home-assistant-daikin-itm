@@ -20,7 +20,7 @@ from homeassistant.util import dt as dt_util
 
 from .auto_mode import Mode
 from .const import DOMAIN
-from .entity import ItmEntity, add_entities_for_new_units, supports_auto
+from .entity import ItmEntity, add_entities_for_new_units, rounded, supports_auto
 from .weather import OutdoorCoordinator
 
 if TYPE_CHECKING:
@@ -136,8 +136,8 @@ class ItmAutoModeSensor(ItmEntity, SensorEntity):
             "reason": last.reason if last else None,
             "since": last.at.isoformat() if last else None,
             "target": auto.target if auto.enabled else None,
-            "temperature": _rounded(last.temperature) if last else None,
-            "outdoor_temperature": _rounded(last.outdoor) if last else None,
+            "temperature": rounded(last.temperature) if last else None,
+            "outdoor_temperature": rounded(last.outdoor) if last else None,
             "changes_24h": auto.switches_today(dt_util.utcnow()),
             "waiting": auto.waiting,
             "wanted": auto.wanted,
@@ -176,8 +176,4 @@ class ItmOutdoorTemperatureSensor(CoordinatorEntity[OutdoorCoordinator], SensorE
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the 24-hour average, which auto mode uses."""
         data = self.coordinator.data
-        return {"average_24h": _rounded(data.mean_24h) if data else None}
-
-
-def _rounded(value: float | None) -> float | None:
-    return round(value, 1) if value is not None else None
+        return {"average_24h": rounded(data.mean_24h) if data else None}
