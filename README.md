@@ -18,6 +18,10 @@ The iTM gets a device of its own, with a device per indoor unit under it. Each u
   in that mode.
 - a **room temperature** sensor, with long-term statistics.
 - **Malfunction** and **Filter** problem sensors (diagnostic), for alerts and automations.
+- for units that offer heating and cooling: **auto mode** (see below), with an **Auto mode** sensor that
+  shows what it chose and why, and a **Ventilate in auto mode** switch (configuration).
+
+The iTM's device also gets an **Outdoor temperature** sensor, which auto mode uses.
 
 Devices and entities are identified by the unit's bus address (e.g. `1:1-04`, from the iTM's Details
 screen), so renaming a unit in the iTM keeps its entities and history. Devices are named after the
@@ -56,6 +60,42 @@ Add the integration using [Home Assistant integrations][ha-add-url]. Enter:
 
 To change these settings later, for example after changing the password or when the iTM got another
 address, choose **Reconfigure** in the integration's menu. The entities stay the same.
+
+## Auto mode
+
+Choose **Auto** as the mode of a unit to keep its room at the target temperature. The unit keeps the room
+at its setpoint itself; auto mode chooses between heating, cooling and ventilating, with the target as the
+setpoint. It changes the mode rarely, so the room doesn't bounce between heating and cooling and the unit's
+limited number of setting changes lasts:
+
+- It compares the **20-minute average** room temperature with the target, and waits for 15 minutes of
+  readings after starting Home Assistant.
+- It **changes over** from heating to cooling at 1.5 °C above the target, and from cooling to heating at
+  1.5 °C below it; not within 2 hours of the previous changeover, and not while the room is already
+  heading back. When the outdoor temperature averaged over 24 hours is below 12 °C, cooling starts only
+  at 2.5 °C above the target; above 20 °C heating starts only at 2.5 °C below it.
+- With **Ventilate in auto mode** on (the default, for units that offer fan mode) it switches to fan once
+  the room is 0.5 °C past the target after at least 30 minutes of heating or cooling, which saves energy,
+  and back to heating (or cooling) when the room is 0.5 °C on the other side.
+- It writes at most **12 changes a day**: mode changes, at least 20 minutes apart, and the setpoints it
+  sets after them. It stops ventilating when only 4 are left. After a mode change it sets the setpoint
+  on the next read, when the unit shows the new mode; when the unit doesn't allow the target in that
+  mode, it uses the nearest setpoint and keeps the target.
+- Changing the temperature changes the target. Choosing another mode, or changing the mode at the remote
+  controller or in the iTM, stops auto mode. A setpoint changed at the remote controller becomes the new
+  target, also while ventilating.
+- While logins are refused (someone uses the iTM's web interface) it doesn't decide on the old readings.
+
+The **Auto mode** sensor shows the mode auto mode chose. Its attributes show the reason, since when, the
+room and outdoor temperature it was based on, the number of changes in the last 24 hours, and which change
+it holds back and why. Every decision also shows in the **logbook**, e.g. *Meeting room: Cool: too warm,
+changing over to cooling (Room temperature 22.6 °C, Target 21 °C, Outdoor temperature 15.2 °C)*, and is
+fired as a `daikin_itm_auto_mode` event for automations.
+
+The outdoor temperature comes from [Open-Meteo.com](https://open-meteo.com/) every 15 minutes, for the
+location of Home Assistant. To use another location, choose **Configure** in the integration's menu.
+When Open-Meteo can't be read, auto mode keeps the last average for 3 hours; without internet it works
+without the outdoor temperature.
 
 ## Things to know
 

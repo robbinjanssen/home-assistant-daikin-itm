@@ -28,7 +28,8 @@ async def async_get_config_entry_diagnostics(
 
     Returns:
     -------
-        The entry's settings without credentials, and what was read from the iTM.
+        The entry's settings without credentials, what was read from the iTM, and
+        the state of auto mode.
 
     """
     coordinator = entry.runtime_data
@@ -44,4 +45,13 @@ async def async_get_config_entry_diagnostics(
             key: dataclasses.asdict(unit)
             for key, unit in (coordinator.data or {}).items()
         },
+        "auto_mode": {
+            key: coordinator.auto_controller(key).as_dict()
+            for key in coordinator.data or {}
+        },
+        "outdoor_temperature": (
+            dataclasses.asdict(coordinator.outdoor.data)
+            if coordinator.outdoor and coordinator.outdoor.data
+            else None
+        ),
     }

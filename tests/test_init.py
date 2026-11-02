@@ -88,7 +88,7 @@ async def test_renamed_unit_keeps_its_entities(
     entities = er.async_entries_for_config_entry(
         er.async_get(hass), init_integration.entry_id
     )
-    assert len(entities) == 3 * 4
+    assert len(entities) == 3 * 6 + 1  # and the outdoor temperature
     await hass.services.async_call(
         "climate",
         "set_temperature",
