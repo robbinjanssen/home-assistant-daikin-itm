@@ -33,6 +33,7 @@ from daikin_itm import (
 )
 
 from .api import unique_id_for_host
+from .auto_mode import AutoController
 from .const import (
     CONFIRM_INTERVAL,
     DOMAIN,
@@ -49,6 +50,8 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from homeassistant.core import CALLBACK_TYPE, HomeAssistant
+
+    from .weather import OutdoorCoordinator
 
 type ItmConfigEntry = ConfigEntry[ItmCoordinator]
 
@@ -191,6 +194,10 @@ class ItmCoordinator(DataUpdateCoordinator[dict[str, Unit]]):
         self.settings = ItmSettingsCoordinator(hass, entry, self)
         # The device of the iTM itself, set up before the entities.
         self.hub_device_id: str | None = None
+        self.outdoor: OutdoorCoordinator | None = None
+        # When the units were last read; refused logins keep showing older data.
+        self.read_at: datetime | None = None
+        self._auto: dict[str, AutoController] = {}  # by key
 
     @property
     def _issue_id(self) -> str:
@@ -236,10 +243,25 @@ class ItmCoordinator(DataUpdateCoordinator[dict[str, Unit]]):
         if self._rejections >= LOGIN_REJECTED_ISSUE_AFTER:
             ir.async_delete_issue(self.hass, DOMAIN, self._issue_id)
         self._rejections = 0
+        self.read_at = dt_util.utcnow()
         self._read = self.by_key(units)
         self.analog = {n: p for n, p in points.items() if isinstance(p, AnalogPoint)}
         self._drop_settled_changes()
         return self._shown()
+
+    def has_pending(self, key: str) -> bool:
+        """Return if a change to a unit is being written or not yet shown by a poll.
+
+        Args:
+        ----
+            key: The unit's key.
+
+        Returns:
+        -------
+            True while the unit as read may not show a change Home Assistant made.
+
+        """
+        return bool(self._pending.get(key))
 
     def _shown(self) -> dict[str, Unit]:
         """Return the units as last read, with the pending changes on top."""
@@ -339,6 +361,20 @@ class ItmCoordinator(DataUpdateCoordinator[dict[str, Unit]]):
                 translation_placeholders={"unit": key},
             )
         return unit.name
+
+    def auto_controller(self, key: str) -> AutoController:
+        """Return the auto mode of a unit, shared by its entities.
+
+        Args:
+        ----
+            key: The unit's key.
+
+        Returns:
+        -------
+            The unit's auto mode.
+
+        """
+        return self._auto.setdefault(key, AutoController())
 
     def display_name(self, key: str) -> str:
         """Return a unit's name for people.

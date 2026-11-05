@@ -68,6 +68,7 @@ async def test_modes_and_fan_from_capabilities(hass: HomeAssistant) -> None:
         HVACMode.FAN_ONLY,
         HVACMode.COOL,
         HVACMode.HEAT,
+        HVACMode.AUTO,
     ]
     assert attributes["fan_modes"] == ["low", "medium", "high", "auto"]
     assert attributes["fan_mode"] == "medium"

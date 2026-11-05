@@ -44,7 +44,95 @@
       "reconfigure_successful": "De instellingen van de iTM zijn gewijzigd."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Automatische modus",
+        "description": "De automatische modus gebruikt de buitentemperatuur van Open-Meteo.com om het seizoen te bepalen.",
+        "data": {
+          "location": "Locatie van de buitentemperatuur"
+        },
+        "data_description": {
+          "location": "Standaard de locatie van Home Assistant."
+        }
+      }
+    }
+  },
   "entity": {
+    "sensor": {
+      "room_temperature": {
+        "name": "Ruimtetemperatuur"
+      },
+      "outdoor_temperature": {
+        "name": "Buitentemperatuur",
+        "state_attributes": {
+          "average_24h": {
+            "name": "Gemiddelde over 24 uur"
+          }
+        }
+      },
+      "auto_mode": {
+        "name": "Automatische modus",
+        "state": {
+          "off": "Uit",
+          "heat": "Verwarmen",
+          "cool": "Koelen",
+          "fan": "Ventileren"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reden",
+            "state": {
+              "started": "gestart",
+              "target_reached": "doeltemperatuur bereikt, ventileren",
+              "below_target": "weer onder het doel",
+              "above_target": "weer boven het doel",
+              "too_cold": "te koud, omschakelen naar verwarmen",
+              "too_warm": "te warm, omschakelen naar koelen",
+              "ventilation_off": "ventileren uitgezet",
+              "target_changed": "doeltemperatuur gewijzigd",
+              "write_failed": "de iTM accepteerde de wijziging niet",
+              "manual": "een andere modus gekozen",
+              "overridden": "de unit is elders gewijzigd"
+            }
+          },
+          "since": {
+            "name": "Sinds"
+          },
+          "target": {
+            "name": "Doel"
+          },
+          "temperature": {
+            "name": "Ruimtetemperatuur"
+          },
+          "outdoor_temperature": {
+            "name": "Buitentemperatuur"
+          },
+          "changes_24h": {
+            "name": "Wijzigingen in 24 uur"
+          },
+          "waiting": {
+            "name": "Wacht",
+            "state": {
+              "history": "op 15 minuten aan metingen",
+              "interval": "op de minimale tijd tussen wijzigingen",
+              "active_time": "tot verwarmen of koelen 30 minuten draait",
+              "changeover": "op 2 uur sinds de vorige omschakeling",
+              "trend": "de ruimte gaat al de goede kant op",
+              "budget": "het aantal wijzigingen voor vandaag is op"
+            }
+          },
+          "wanted": {
+            "name": "Wil",
+            "state": {
+              "heat": "Verwarmen",
+              "cool": "Koelen",
+              "fan": "Ventileren"
+            }
+          }
+        }
+      }
+    },
     "binary_sensor": {
       "malfunction": {
         "name": "Storing"
@@ -63,6 +151,23 @@
       },
       "emergency_stop": {
         "name": "Noodstop"
+      }
+    },
+    "switch": {
+      "auto_ventilate": {
+        "name": "Ventileren in automatische modus"
+      },
+      "cool_limit": {
+        "name": "Koellimiet"
+      },
+      "heat_limit": {
+        "name": "Verwarmingslimiet"
+      },
+      "schedule": {
+        "name": "Schema {name}"
+      },
+      "changeover": {
+        "name": "Changeover {name}"
       }
     },
     "climate": {
@@ -128,25 +233,6 @@
           "forbidden": "Verboden"
         }
       }
-    },
-    "sensor": {
-      "room_temperature": {
-        "name": "Ruimtetemperatuur"
-      }
-    },
-    "switch": {
-      "cool_limit": {
-        "name": "Koellimiet"
-      },
-      "heat_limit": {
-        "name": "Verwarmingslimiet"
-      },
-      "schedule": {
-        "name": "Schema {name}"
-      },
-      "changeover": {
-        "name": "Changeover {name}"
-      }
     }
   },
   "exceptions": {
@@ -173,6 +259,9 @@
     },
     "cannot_connect": {
       "message": "Kan de iTM niet bereiken: {error}"
+    },
+    "weather_failed": {
+      "message": "Kan de buitentemperatuur niet ophalen: {error}"
     }
   },
   "issues": {

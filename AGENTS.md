@@ -19,6 +19,9 @@ custom_components/daikin_itm/
   coordinator.py   polling (units, and settings far less often), session token store,
                    writes with immediate state
   climate.py, sensor.py, binary_sensor.py, select.py, number.py, switch.py, diagnostics.py
+  auto_mode.py     auto mode controller (no Home Assistant code); climate.py drives it
+  weather.py       outdoor temperature from Open-Meteo, for auto mode
+  logbook.py       describes auto mode decisions in the logbook
   entity.py        base entities (unit, unit setting, iTM) and adding entities for new items
   strings.json, translations/{en,nl}.json, icons.json
   brand/          Daikin icon and logo, from home-assistant/brands (daikin_altherma)
@@ -70,6 +73,9 @@ work on a branch.
 - **Setpoints of stopped units are ignored** by the iTM. The climate entity
   reports no target temperature while a unit is stopped and refuses a setpoint
   with a `ServiceValidationError`.
+- **Indoor units allow about 7000 setting changes a year.** Auto mode keeps
+  the setpoint fixed and limits its mode changes (`auto_mode.py`); keep any
+  automatic writes as rare.
 
 ## Conventions
 

@@ -44,7 +44,95 @@
       "reconfigure_successful": "The iTM settings have been changed."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Auto mode",
+        "description": "Auto mode uses the outdoor temperature from Open-Meteo.com to tell the season.",
+        "data": {
+          "location": "Location of the outdoor temperature"
+        },
+        "data_description": {
+          "location": "Defaults to the location of Home Assistant."
+        }
+      }
+    }
+  },
   "entity": {
+    "sensor": {
+      "room_temperature": {
+        "name": "Room temperature"
+      },
+      "outdoor_temperature": {
+        "name": "Outdoor temperature",
+        "state_attributes": {
+          "average_24h": {
+            "name": "Average over 24 hours"
+          }
+        }
+      },
+      "auto_mode": {
+        "name": "Auto mode",
+        "state": {
+          "off": "Off",
+          "heat": "Heat",
+          "cool": "Cool",
+          "fan": "Fan only"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "started": "started",
+              "target_reached": "target temperature reached, ventilating",
+              "below_target": "below the target again",
+              "above_target": "above the target again",
+              "too_cold": "too cold, changing over to heating",
+              "too_warm": "too warm, changing over to cooling",
+              "ventilation_off": "ventilation turned off",
+              "target_changed": "target temperature changed",
+              "write_failed": "the iTM did not accept the change",
+              "manual": "another mode was chosen",
+              "overridden": "the unit was changed elsewhere"
+            }
+          },
+          "since": {
+            "name": "Since"
+          },
+          "target": {
+            "name": "Target"
+          },
+          "temperature": {
+            "name": "Room temperature"
+          },
+          "outdoor_temperature": {
+            "name": "Outdoor temperature"
+          },
+          "changes_24h": {
+            "name": "Changes in 24 hours"
+          },
+          "waiting": {
+            "name": "Waiting",
+            "state": {
+              "history": "for 15 minutes of readings",
+              "interval": "for the minimum time between changes",
+              "active_time": "for heating or cooling to run 30 minutes",
+              "changeover": "for 2 hours since the last changeover",
+              "trend": "the room is already heading back",
+              "budget": "the daily number of changes is used up"
+            }
+          },
+          "wanted": {
+            "name": "Wants",
+            "state": {
+              "heat": "Heat",
+              "cool": "Cool",
+              "fan": "Fan only"
+            }
+          }
+        }
+      }
+    },
     "binary_sensor": {
       "malfunction": {
         "name": "Malfunction"
@@ -63,6 +151,23 @@
       },
       "emergency_stop": {
         "name": "Emergency stop"
+      }
+    },
+    "switch": {
+      "auto_ventilate": {
+        "name": "Ventilate in auto mode"
+      },
+      "cool_limit": {
+        "name": "Cooling limit"
+      },
+      "heat_limit": {
+        "name": "Heating limit"
+      },
+      "schedule": {
+        "name": "Schedule {name}"
+      },
+      "changeover": {
+        "name": "Changeover {name}"
       }
     },
     "climate": {
@@ -128,25 +233,6 @@
           "forbidden": "Forbidden"
         }
       }
-    },
-    "sensor": {
-      "room_temperature": {
-        "name": "Room temperature"
-      }
-    },
-    "switch": {
-      "cool_limit": {
-        "name": "Cooling limit"
-      },
-      "heat_limit": {
-        "name": "Heating limit"
-      },
-      "schedule": {
-        "name": "Schedule {name}"
-      },
-      "changeover": {
-        "name": "Changeover {name}"
-      }
     }
   },
   "exceptions": {
@@ -173,6 +259,9 @@
     },
     "cannot_connect": {
       "message": "Could not reach the iTM: {error}"
+    },
+    "weather_failed": {
+      "message": "Could not read the outdoor temperature: {error}"
     }
   },
   "issues": {

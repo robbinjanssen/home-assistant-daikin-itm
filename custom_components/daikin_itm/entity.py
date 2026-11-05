@@ -190,6 +190,36 @@ def add_entities_for_new_items(
     return coordinator.async_add_listener(add_new)
 
 
+def rounded(value: float | None) -> float | None:
+    """Return a temperature rounded to a tenth of a degree, for display.
+
+    Args:
+    ----
+        value: The temperature, or None.
+
+    Returns:
+    -------
+        The rounded temperature, or None.
+
+    """
+    return round(value, 1) if value is not None else None
+
+
+def supports_auto(caps: Capabilities | None) -> bool:
+    """Return if auto mode can control a unit: it must offer heating and cooling.
+
+    Args:
+    ----
+        caps: What the unit offers.
+
+    Returns:
+    -------
+        True if the unit offers heat and cool.
+
+    """
+    return caps is not None and {"heat", "cool"} <= set(caps.modes)
+
+
 def add_entities_for_new_units(
     coordinator: ItmCoordinator,
     async_add_entities: AddConfigEntryEntitiesCallback,

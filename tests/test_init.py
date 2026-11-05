@@ -88,10 +88,10 @@ async def test_renamed_unit_keeps_its_entities(
     entities = er.async_entries_for_config_entry(
         er.async_get(hass), init_integration.entry_id
     )
-    # Per unit: climate, room temperature, malfunction, filter, three remote locks,
-    # two limit switches and four limits; and the iTM's three schedule programs,
-    # three indicators and overtime duration.
-    assert len(entities) == 3 * 13 + 7
+    # Per unit: climate, room temperature, malfunction, filter, auto mode sensor and
+    # switch, three remote locks, two limit switches and four limits; and the iTM's
+    # outdoor temperature, three schedule programs, three indicators and overtime.
+    assert len(entities) == 3 * 15 + 8
     await hass.services.async_call(
         "climate",
         "set_temperature",

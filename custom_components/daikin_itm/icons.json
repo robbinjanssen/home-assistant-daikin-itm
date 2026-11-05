@@ -8,18 +8,27 @@
         "default": "mdi:leaf"
       }
     },
-    "select": {
-      "start_stop_lock": {
-        "default": "mdi:remote"
+    "sensor": {
+      "outdoor_temperature": {
+        "default": "mdi:sun-thermometer"
       },
-      "mode_lock": {
-        "default": "mdi:remote"
-      },
-      "setpoint_lock": {
-        "default": "mdi:remote"
+      "auto_mode": {
+        "default": "mdi:thermostat-auto",
+        "state": {
+          "off": "mdi:thermostat-cog",
+          "heat": "mdi:fire",
+          "cool": "mdi:snowflake",
+          "fan": "mdi:fan"
+        }
       }
     },
     "switch": {
+      "auto_ventilate": {
+        "default": "mdi:fan-auto",
+        "state": {
+          "off": "mdi:fan-off"
+        }
+      },
       "cool_limit": {
         "default": "mdi:snowflake-thermometer"
       },
@@ -31,6 +40,17 @@
       },
       "changeover": {
         "default": "mdi:sun-snowflake-variant"
+      }
+    },
+    "select": {
+      "start_stop_lock": {
+        "default": "mdi:remote"
+      },
+      "mode_lock": {
+        "default": "mdi:remote"
+      },
+      "setpoint_lock": {
+        "default": "mdi:remote"
       }
     },
     "number": {
