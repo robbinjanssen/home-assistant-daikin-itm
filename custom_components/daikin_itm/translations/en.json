@@ -45,17 +45,107 @@
     }
   },
   "entity": {
-    "sensor": {
-      "room_temperature": {
-        "name": "Room temperature"
-      }
-    },
     "binary_sensor": {
       "malfunction": {
         "name": "Malfunction"
       },
       "filter": {
         "name": "Filter"
+      },
+      "analog_alarm": {
+        "name": "{name} alarm"
+      },
+      "energy_saving": {
+        "name": "Energy saving"
+      },
+      "error": {
+        "name": "Error"
+      },
+      "emergency_stop": {
+        "name": "Emergency stop"
+      }
+    },
+    "climate": {
+      "unit": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "none": "None",
+              "setback_low": "Setback low",
+              "setback_high": "Setback high"
+            }
+          },
+          "swing_mode": {
+            "state": {
+              "position_0": "Horizontal",
+              "position_1": "Position 1",
+              "position_2": "Position 2",
+              "position_3": "Position 3",
+              "position_4": "Down",
+              "swing": "Swing"
+            }
+          }
+        }
+      }
+    },
+    "number": {
+      "cool_limit_min": {
+        "name": "Cooling limit minimum"
+      },
+      "cool_limit_max": {
+        "name": "Cooling limit maximum"
+      },
+      "heat_limit_min": {
+        "name": "Heating limit minimum"
+      },
+      "heat_limit_max": {
+        "name": "Heating limit maximum"
+      },
+      "overtime_duration": {
+        "name": "Overtime duration"
+      }
+    },
+    "select": {
+      "start_stop_lock": {
+        "name": "Remote start/stop",
+        "state": {
+          "allowed": "Allowed",
+          "stop_only": "Stop only",
+          "forbidden": "Forbidden"
+        }
+      },
+      "mode_lock": {
+        "name": "Remote mode",
+        "state": {
+          "allowed": "Allowed",
+          "forbidden": "Forbidden"
+        }
+      },
+      "setpoint_lock": {
+        "name": "Remote setpoint",
+        "state": {
+          "allowed": "Allowed",
+          "forbidden": "Forbidden"
+        }
+      }
+    },
+    "sensor": {
+      "room_temperature": {
+        "name": "Room temperature"
+      }
+    },
+    "switch": {
+      "cool_limit": {
+        "name": "Cooling limit"
+      },
+      "heat_limit": {
+        "name": "Heating limit"
+      },
+      "schedule": {
+        "name": "Schedule {name}"
+      },
+      "changeover": {
+        "name": "Changeover {name}"
       }
     }
   },

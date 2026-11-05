@@ -15,7 +15,14 @@ from .coordinator import HassSessionStore, ItmConfigEntry, ItmCoordinator
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-PLATFORMS = [Platform.BINARY_SENSOR, Platform.CLIMATE, Platform.SENSOR]
+PLATFORMS = [
+    Platform.BINARY_SENSOR,
+    Platform.CLIMATE,
+    Platform.NUMBER,
+    Platform.SELECT,
+    Platform.SENSOR,
+    Platform.SWITCH,
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ItmConfigEntry) -> bool:
@@ -51,6 +58,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ItmConfigEntry) -> bool:
 
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # The settings take about twenty requests; read them without delaying the
+    # units. Their entities are added once they have been read.
+    entry.async_create_task(
+        hass, coordinator.settings.async_refresh(), "daikin_itm settings"
+    )
     return True
 
 

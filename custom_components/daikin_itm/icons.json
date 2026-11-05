@@ -3,6 +3,51 @@
     "binary_sensor": {
       "filter": {
         "default": "mdi:air-filter"
+      },
+      "energy_saving": {
+        "default": "mdi:leaf"
+      }
+    },
+    "select": {
+      "start_stop_lock": {
+        "default": "mdi:remote"
+      },
+      "mode_lock": {
+        "default": "mdi:remote"
+      },
+      "setpoint_lock": {
+        "default": "mdi:remote"
+      }
+    },
+    "switch": {
+      "cool_limit": {
+        "default": "mdi:snowflake-thermometer"
+      },
+      "heat_limit": {
+        "default": "mdi:sun-thermometer"
+      },
+      "schedule": {
+        "default": "mdi:calendar-clock"
+      },
+      "changeover": {
+        "default": "mdi:sun-snowflake-variant"
+      }
+    },
+    "number": {
+      "cool_limit_min": {
+        "default": "mdi:snowflake-thermometer"
+      },
+      "cool_limit_max": {
+        "default": "mdi:snowflake-thermometer"
+      },
+      "heat_limit_min": {
+        "default": "mdi:sun-thermometer"
+      },
+      "heat_limit_max": {
+        "default": "mdi:sun-thermometer"
+      },
+      "overtime_duration": {
+        "default": "mdi:timer-plus-outline"
       }
     }
   }

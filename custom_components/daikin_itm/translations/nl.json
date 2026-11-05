@@ -45,17 +45,107 @@
     }
   },
   "entity": {
-    "sensor": {
-      "room_temperature": {
-        "name": "Ruimtetemperatuur"
-      }
-    },
     "binary_sensor": {
       "malfunction": {
         "name": "Storing"
       },
       "filter": {
         "name": "Filter"
+      },
+      "analog_alarm": {
+        "name": "Alarm {name}"
+      },
+      "energy_saving": {
+        "name": "Energiebesparing"
+      },
+      "error": {
+        "name": "Storing"
+      },
+      "emergency_stop": {
+        "name": "Noodstop"
+      }
+    },
+    "climate": {
+      "unit": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "none": "Geen",
+              "setback_low": "Setback laag",
+              "setback_high": "Setback hoog"
+            }
+          },
+          "swing_mode": {
+            "state": {
+              "position_0": "Horizontaal",
+              "position_1": "Stand 1",
+              "position_2": "Stand 2",
+              "position_3": "Stand 3",
+              "position_4": "Omlaag",
+              "swing": "Zwaaien"
+            }
+          }
+        }
+      }
+    },
+    "number": {
+      "cool_limit_min": {
+        "name": "Koellimiet minimum"
+      },
+      "cool_limit_max": {
+        "name": "Koellimiet maximum"
+      },
+      "heat_limit_min": {
+        "name": "Verwarmingslimiet minimum"
+      },
+      "heat_limit_max": {
+        "name": "Verwarmingslimiet maximum"
+      },
+      "overtime_duration": {
+        "name": "Duur overwerktimer"
+      }
+    },
+    "select": {
+      "start_stop_lock": {
+        "name": "Afstandsbediening aan/uit",
+        "state": {
+          "allowed": "Toegestaan",
+          "stop_only": "Alleen stoppen",
+          "forbidden": "Verboden"
+        }
+      },
+      "mode_lock": {
+        "name": "Afstandsbediening modus",
+        "state": {
+          "allowed": "Toegestaan",
+          "forbidden": "Verboden"
+        }
+      },
+      "setpoint_lock": {
+        "name": "Afstandsbediening temperatuur",
+        "state": {
+          "allowed": "Toegestaan",
+          "forbidden": "Verboden"
+        }
+      }
+    },
+    "sensor": {
+      "room_temperature": {
+        "name": "Ruimtetemperatuur"
+      }
+    },
+    "switch": {
+      "cool_limit": {
+        "name": "Koellimiet"
+      },
+      "heat_limit": {
+        "name": "Verwarmingslimiet"
+      },
+      "schedule": {
+        "name": "Schema {name}"
+      },
+      "changeover": {
+        "name": "Changeover {name}"
       }
     }
   },

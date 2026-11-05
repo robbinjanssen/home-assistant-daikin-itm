@@ -20,12 +20,16 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
 from daikin_itm import (
+    AnalogPoint,
     Capabilities,
     ItmClient,
+    ItmConfig,
     ItmError,
     LoginRejected,
     SetpointOutOfRange,
+    TempLimit,
     Unit,
+    UnitSettings,
 )
 
 from .api import unique_id_for_host
@@ -37,6 +41,7 @@ from .const import (
     MAX_TOLERATED_LOGIN_REJECTIONS,
     PENDING_TIMEOUT,
     SCAN_INTERVAL,
+    SETTINGS_SCAN_INTERVAL,
 )
 
 if TYPE_CHECKING:
@@ -181,6 +186,9 @@ class ItmCoordinator(DataUpdateCoordinator[dict[str, Unit]]):
         self._rejections = 0
         self._read: dict[str, Unit] = {}  # the units as last read
         self._pending: dict[str, list[PendingChange]] = {}  # by key
+        # Analog inputs in the zone, by name: they have no bus address.
+        self.analog: dict[str, AnalogPoint] = {}
+        self.settings = ItmSettingsCoordinator(hass, entry, self)
         # The device of the iTM itself, set up before the entities.
         self.hub_device_id: str | None = None
 
@@ -212,7 +220,8 @@ class ItmCoordinator(DataUpdateCoordinator[dict[str, Unit]]):
         try:
             if not self.capabilities:
                 await self._refresh_capabilities()
-            units = await self.client.fetch_units()
+            points = await self.client.fetch_points()
+            units = {n: p for n, p in points.items() if isinstance(p, Unit)}
             if set(units) - set(self._key_by_name):
                 # A unit was added or renamed in the iTM: map names to keys again.
                 await self._refresh_capabilities()
@@ -227,11 +236,8 @@ class ItmCoordinator(DataUpdateCoordinator[dict[str, Unit]]):
         if self._rejections >= LOGIN_REJECTED_ISSUE_AFTER:
             ir.async_delete_issue(self.hass, DOMAIN, self._issue_id)
         self._rejections = 0
-        self._read = {
-            self._key_by_name[name]: unit
-            for name, unit in units.items()
-            if name in self._key_by_name
-        }
+        self._read = self.by_key(units)
+        self.analog = {n: p for n, p in points.items() if isinstance(p, AnalogPoint)}
         self._drop_settled_changes()
         return self._shown()
 
@@ -291,6 +297,49 @@ class ItmCoordinator(DataUpdateCoordinator[dict[str, Unit]]):
             translation_domain=DOMAIN, translation_key="login_rejected"
         ) from err
 
+    def by_key[T](self, by_name: dict[str, T]) -> dict[str, T]:
+        """Key what the iTM returns by unit name by the units' stable keys.
+
+        Args:
+        ----
+            by_name: Anything by unit name.
+
+        Returns:
+        -------
+            The same by key, without the names that are no known unit.
+
+        """
+        return {
+            self._key_by_name[name]: value
+            for name, value in by_name.items()
+            if name in self._key_by_name
+        }
+
+    def name_of(self, key: str) -> str:
+        """Return a unit's current name in the iTM.
+
+        Args:
+        ----
+            key: The unit's key.
+
+        Returns:
+        -------
+            The unit's name.
+
+        Raises:
+        ------
+            HomeAssistantError: The unit was not read.
+
+        """
+        unit = self._read.get(key)
+        if unit is None:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="unit_unavailable",
+                translation_placeholders={"unit": key},
+            )
+        return unit.name
+
     def display_name(self, key: str) -> str:
         """Return a unit's name for people.
 
@@ -338,18 +387,12 @@ class ItmCoordinator(DataUpdateCoordinator[dict[str, Unit]]):
             HomeAssistantError: The unit is unavailable or the change failed.
 
         """
-        unit = self._read.get(key)
-        if unit is None:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN,
-                translation_key="unit_unavailable",
-                translation_placeholders={"unit": key},
-            )
+        name = self.name_of(key)
         change = PendingChange(changes)
         self._pending.setdefault(key, []).append(change)
         self.async_set_updated_data(self._shown())
         try:
-            await write(unit.name)
+            await write(name)
         except SetpointOutOfRange as err:
             self._discard(key, change)
             if key in self._read:
@@ -386,6 +429,161 @@ class ItmCoordinator(DataUpdateCoordinator[dict[str, Unit]]):
             pending.remove(change)
         if not pending:
             self._pending.pop(key, None)
+
+
+@dataclasses.dataclass(frozen=True)
+class ItmSettings:
+    """What the iTM's menu and list view show, read far less often than the units."""
+
+    config: ItmConfig
+    # The units as the list view shows them, by key: with their wall remote locks,
+    # setpoint limits and airflow direction, which the icon view lacks.
+    units: dict[str, Unit]
+
+
+class ItmSettingsCoordinator(DataUpdateCoordinator[ItmSettings]):
+    """Read the settings: the menu's configuration and the units' list view.
+
+    The menu bar's indicators, the schedule programs, the auto changeover groups and
+    the overtime duration come from one session (fetch_config), the units' locks,
+    limits and airflow direction from a second (the list view, one request).
+    """
+
+    config_entry: ItmConfigEntry
+
+    def __init__(
+        self, hass: HomeAssistant, entry: ItmConfigEntry, units: ItmCoordinator
+    ) -> None:
+        """Initialize the coordinator.
+
+        Args:
+        ----
+            hass: The HomeAssistant instance.
+            entry: The config entry.
+            units: The coordinator of the units, which maps names to keys.
+
+        """
+        super().__init__(
+            hass,
+            LOGGER,
+            config_entry=entry,
+            name=f"{DOMAIN}_settings",
+            update_interval=SETTINGS_SCAN_INTERVAL,
+        )
+        self.units = units
+        self.client = units.client
+
+    async def _async_update_data(self) -> ItmSettings:
+        """Read the settings, in two sessions.
+
+        Returns
+        -------
+            The settings.
+
+        Raises
+        ------
+            UpdateFailed: The iTM could not be read.
+
+        """
+        try:
+            config = await self.client.fetch_config()
+            listed = await self.client.fetch_units(view="list")
+        except LoginRejected as err:
+            # Usually someone uses the web UI; the units' coordinator tells when
+            # logins keep being refused.
+            if self.data is not None and self.units.last_update_success:
+                return self.data
+            raise UpdateFailed(
+                translation_domain=DOMAIN, translation_key="login_rejected"
+            ) from err
+        except (ItmError, aiohttp.ClientError, TimeoutError) as err:
+            raise UpdateFailed(
+                translation_domain=DOMAIN,
+                translation_key="update_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
+        return ItmSettings(config, self.units.by_key(listed))
+
+    async def async_write[T](
+        self,
+        write: Callable[[], Awaitable[T | None]],
+        update: Callable[[ItmSettings, T], ItmSettings],
+    ) -> None:
+        """Change a setting and show it as the iTM reads it back.
+
+        Settings writes are confirmed by the library (a read in a fresh session), so
+        unlike unit writes they are not shown before the iTM accepted them.
+
+        Args:
+        ----
+            write: Sends the change and returns the setting as read back.
+            update: Puts the setting as read back into the settings.
+
+        Raises:
+        ------
+            HomeAssistantError: The change failed.
+
+        """
+        try:
+            result = await write()
+        except BaseException as err:
+            if (error := _service_error(err)) is None:
+                raise
+            raise error from err
+        if result is not None and self.data is not None:
+            self.async_set_updated_data(update(self.data, result))
+
+    async def async_set_unit_settings(self, key: str, **changes: Any) -> None:
+        """Change a unit's locks, limits or airflow direction.
+
+        Args:
+        ----
+            key: The unit's key.
+            **changes: The arguments of ItmClient.set_unit_settings.
+
+        """
+        name = self.units.name_of(key)
+
+        def update(data: ItmSettings, result: UnitSettings) -> ItmSettings:
+            unit = data.units.get(key)
+            if unit is None:
+                return data
+            unit = dataclasses.replace(
+                unit,
+                remote_locks=result.remote_locks,
+                cool_limit=_limit(result.cool_limit),
+                heat_limit=_limit(result.heat_limit),
+                airflow_direction=result.airflow_direction,
+            )
+            return dataclasses.replace(data, units={**data.units, key: unit})
+
+        await self.async_write(
+            lambda: self.client.set_unit_settings(name, **changes), update
+        )
+
+    def replace_config(self, data: ItmSettings, **changes: Any) -> ItmSettings:
+        """Return the settings with some of the configuration replaced.
+
+        Args:
+        ----
+            data: The settings.
+            **changes: The ItmConfig fields to replace.
+
+        Returns:
+        -------
+            The new settings.
+
+        """
+        return dataclasses.replace(
+            data, config=dataclasses.replace(data.config, **changes)
+        )
+
+
+def _limit(limit: TempLimit) -> tuple[float, float] | None:
+    """Return a setpoint limit as the list view shows it: None while disabled."""
+    if limit.enabled and limit.minimum is not None and limit.maximum is not None:
+        return (limit.minimum, limit.maximum)
+    return None
 
 
 def _service_error(err: BaseException) -> HomeAssistantError | None:

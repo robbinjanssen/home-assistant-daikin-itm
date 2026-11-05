@@ -15,9 +15,24 @@ The iTM gets a device of its own, with a device per indoor unit under it. Each u
 
 - a **climate** entity: off plus the operation modes the unit offers, the setpoint, the fan speed (when
   the unit allows changing it) and the room temperature. Choosing a mode for a unit that is off starts it
-  in that mode.
+  in that mode. Its presets put the unit in **setback** low or high (and back), and on units with an
+  adjustable airflow direction its swing modes set that direction (horizontal, positions 1-3, down, or
+  swing).
 - a **room temperature** sensor, with long-term statistics.
 - **Malfunction** and **Filter** problem sensors (diagnostic), for alerts and automations.
+- **Remote start/stop**, **Remote mode** and **Remote setpoint** selects (configuration): what the wall
+  remote controller may do (allowed, stop only, forbidden).
+- **Cooling limit** and **Heating limit** switches with their **minimum** and **maximum** (configuration):
+  the setpoint range the unit allows while cooling or heating. The minimum and maximum are unavailable
+  while the limit is off.
+
+The iTM's own device has:
+
+- a **Schedule** switch per schedule program, to enable or disable it, and a **Changeover** switch per auto
+  changeover group (configuration).
+- the **Overtime duration** (configuration): how long the overtime timer keeps a unit running.
+- **Energy saving**, **Error** and **Emergency stop** sensors: the indicators of the iTM's menu bar.
+- an **alarm** sensor per analog input in the zone, on while its value is outside its limits.
 
 Devices and entities are identified by the unit's bus address (e.g. `1:1-04`, from the iTM's Details
 screen), so renaming a unit in the iTM keeps its entities and history. Devices are named after the
@@ -64,6 +79,11 @@ address, choose **Reconfigure** in the integration's menu. The entities stay the
   Home Assistant keeps showing the last known state for a few minutes and then marks the units
   unavailable. If logins keep being refused for 30 minutes, a repair issue tells you: either someone is
   still logged in, or the credentials have changed.
+- **Settings are read every 15 minutes.** The schedule programs, changeover groups, overtime duration,
+  the menu bar's indicators and the units' remote locks, limits and airflow direction take about twenty
+  requests to read, so Home Assistant reads them every 15 minutes instead of every minute. A change made
+  from Home Assistant shows right away, as the iTM reads it back; a change made on the iTM itself shows
+  within 15 minutes.
 - **Changes take a while.** Writing a change to the iTM takes a few seconds, and it takes another 3-8
   seconds to reach the unit. Home Assistant shows a change right away, goes back if the iTM does not
   accept it, and a read 10 seconds later confirms it.

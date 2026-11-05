@@ -16,9 +16,10 @@ custom_components/daikin_itm/
   __init__.py      setup, unload, removal, the iTM's own device
   api.py           creates the client from config entry data
   config_flow.py   user and reconfigure flow
-  coordinator.py   polling, session token store, writes with immediate state
-  climate.py, sensor.py, binary_sensor.py, diagnostics.py
-  entity.py        base entity and adding entities for new units
+  coordinator.py   polling (units, and settings far less often), session token store,
+                   writes with immediate state
+  climate.py, sensor.py, binary_sensor.py, select.py, number.py, switch.py, diagnostics.py
+  entity.py        base entities (unit, unit setting, iTM) and adding entities for new items
   strings.json, translations/{en,nl}.json, icons.json
   brand/          Daikin icon and logo, from home-assistant/brands (daikin_altherma)
 tests/             pytest-homeassistant-custom-component tests against a simulated iTM
@@ -84,6 +85,15 @@ work on a branch.
   unit or changing the iTM's address keeps entities and history. Keep entity
   IDs stable for existing users. Unit devices hang under the iTM's device
   (`via_device_id`).
+- **Two coordinators**: `ItmCoordinator` reads the units (`fetch_points`, also the
+  analog inputs) every minute. `ItmSettingsCoordinator` (`coordinator.settings`)
+  reads `fetch_config` and the list view (`fetch_units(view="list")`) every 15
+  minutes: the menu's configuration and indicators, and the units' remote locks,
+  limits and airflow direction. Its first read runs in the background after setup,
+  so its entities are added once it has worked. Settings writes go through
+  `ItmSettingsCoordinator.async_write`, which shows the setting as the library
+  reads it back. Only expose library functions validated on a real iTM (not
+  `allow_experimental`), and nothing installer-only or safety-related.
 - **State updates**: write through `ItmCoordinator.async_write`. It shows the
   change before writing (optimistic update) and undoes it if the write fails.
   The coordinator keeps the units as last read apart from the pending changes
