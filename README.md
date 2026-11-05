@@ -31,7 +31,7 @@ The iTM gets a device of its own, with a device per indoor unit under it. Each u
 The iTM's own device has an **Outdoor temperature** sensor, which auto mode uses, and:
 
 - a **Schedule** switch per schedule program, to enable or disable it, and a **Changeover** switch per auto
-  changeover group (configuration).
+  changeover group (configuration). Don't combine the iTM's auto changeover with auto mode, see below.
 - the **Overtime duration** (configuration): how long the overtime timer keeps a unit running.
 - **Energy saving**, **Error** and **Emergency stop** sensors: the indicators of the iTM's menu bar.
 - an **alarm** sensor per analog input in the zone, on while its value is outside its limits.
@@ -109,6 +109,12 @@ The outdoor temperature comes from [Open-Meteo.com](https://open-meteo.com/) eve
 location of Home Assistant. To use another location, choose **Configure** in the integration's menu.
 When Open-Meteo can't be read, auto mode keeps the last average for 3 hours; without internet it works
 without the outdoor temperature.
+
+**Don't use auto mode on units in an enabled auto changeover group of the iTM.** Both switch the unit
+between heating and cooling, each by its own rules, so they work against each other: auto mode sees the
+iTM's changeover as a change made elsewhere and stops, or they keep undoing each other's changes, which
+uses up the unit's limited number of setting changes. Use one or the other: disable the group with its
+**Changeover** switch, or leave the unit's mode to the iTM.
 
 ## Things to know
 
