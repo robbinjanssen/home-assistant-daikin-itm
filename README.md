@@ -15,13 +15,26 @@ The iTM gets a device of its own, with a device per indoor unit under it. Each u
 
 - a **climate** entity: off plus the operation modes the unit offers, the setpoint, the fan speed (when
   the unit allows changing it) and the room temperature. Choosing a mode for a unit that is off starts it
-  in that mode.
+  in that mode. Its presets put the unit in **setback** low or high (and back), and on units with an
+  adjustable airflow direction its swing modes set that direction (horizontal, positions 1-3, down, or
+  swing).
 - a **room temperature** sensor, with long-term statistics.
 - **Malfunction** and **Filter** problem sensors (diagnostic), for alerts and automations.
 - for units that offer heating and cooling: **auto mode** (see below), with an **Auto mode** sensor that
   shows what it chose and why, and a **Ventilate in auto mode** switch (configuration).
+- **Remote start/stop**, **Remote mode** and **Remote setpoint** selects (configuration): what the wall
+  remote controller may do (allowed, stop only, forbidden).
+- **Cooling limit** and **Heating limit** switches with their **minimum** and **maximum** (configuration):
+  the setpoint range the unit allows while cooling or heating. The minimum and maximum are unavailable
+  while the limit is off.
 
-The iTM's device also gets an **Outdoor temperature** sensor, which auto mode uses.
+The iTM's own device has an **Outdoor temperature** sensor, which auto mode uses, and:
+
+- a **Schedule** switch per schedule program, to enable or disable it, and a **Changeover** switch per auto
+  changeover group (configuration). Don't combine the iTM's auto changeover with auto mode, see below.
+- the **Overtime duration** (configuration): how long the overtime timer keeps a unit running.
+- **Energy saving**, **Error** and **Emergency stop** sensors: the indicators of the iTM's menu bar.
+- an **alarm** sensor per analog input in the zone, on while its value is outside its limits.
 
 Devices and entities are identified by the unit's bus address (e.g. `1:1-04`, from the iTM's Details
 screen), so renaming a unit in the iTM keeps its entities and history. Devices are named after the
@@ -97,6 +110,12 @@ location of Home Assistant. To use another location, choose **Configure** in the
 When Open-Meteo can't be read, auto mode keeps the last average for 3 hours; without internet it works
 without the outdoor temperature.
 
+**Don't use auto mode on units in an enabled auto changeover group of the iTM.** Both switch the unit
+between heating and cooling, each by its own rules, so they work against each other: auto mode sees the
+iTM's changeover as a change made elsewhere and stops, or they keep undoing each other's changes, which
+uses up the unit's limited number of setting changes. Use one or the other: disable the group with its
+**Changeover** switch, or leave the unit's mode to the iTM.
+
 ## Things to know
 
 - **The iTM allows one web session at a time.** Home Assistant logs in, reads all units and logs out every
@@ -104,6 +123,11 @@ without the outdoor temperature.
   Home Assistant keeps showing the last known state for a few minutes and then marks the units
   unavailable. If logins keep being refused for 30 minutes, a repair issue tells you: either someone is
   still logged in, or the credentials have changed.
+- **Settings are read every 15 minutes.** The schedule programs, changeover groups, overtime duration,
+  the menu bar's indicators and the units' remote locks, limits and airflow direction take about twenty
+  requests to read, so Home Assistant reads them every 15 minutes instead of every minute. A change made
+  from Home Assistant shows right away, as the iTM reads it back; a change made on the iTM itself shows
+  within 15 minutes.
 - **Changes take a while.** Writing a change to the iTM takes a few seconds, and it takes another 3-8
   seconds to reach the unit. Home Assistant shows a change right away, goes back if the iTM does not
   accept it, and a read 10 seconds later confirms it.

@@ -33,6 +33,7 @@ async def async_get_config_entry_diagnostics(
 
     """
     coordinator = entry.runtime_data
+    settings = coordinator.settings
     return {
         "entry": async_redact_data(dict(entry.data), TO_REDACT),
         "web_version": coordinator.client.web_version,
@@ -54,4 +55,10 @@ async def async_get_config_entry_diagnostics(
             if coordinator.outdoor and coordinator.outdoor.data
             else None
         ),
+        "analog": {
+            name: dataclasses.asdict(point)
+            for name, point in coordinator.analog.items()
+        },
+        "settings_last_update_success": settings.last_update_success,
+        "settings": dataclasses.asdict(settings.data) if settings.data else None,
     }

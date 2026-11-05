@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.climate import (
     ATTR_HVAC_MODE,
+    PRESET_NONE,
     ClimateEntity,
     ClimateEntityFeature,
     HVACAction,
@@ -17,7 +18,8 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.restore_state import RestoredExtraData, RestoreEntity
 from homeassistant.util import dt as dt_util
 
-from daikin_itm import FAN_SPEEDS
+from daikin_itm import FAN_SPEEDS, PowerState
+from daikin_itm.models import AIRFLOW_DIRECTIONS
 
 from .auto_mode import Mode, Reason
 from .const import DOMAIN, EVENT_AUTO_MODE, LOGGER
@@ -28,6 +30,8 @@ if TYPE_CHECKING:
 
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+    from daikin_itm import Unit
 
     from .auto_mode import Decision
     from .coordinator import ItmConfigEntry, ItmCoordinator
@@ -46,6 +50,16 @@ MODE_TO_ACTION = {
     "fan": HVACAction.FAN,
     "dry": HVACAction.DRYING,
 }
+
+# Setback lowers (heating) or raises (cooling) the setpoint by the offsets of the
+# iTM's setback settings, low or high.
+PRESET_SETBACK_LOW = "setback_low"
+PRESET_SETBACK_HIGH = "setback_high"
+PRESET_TO_STATE = {
+    PRESET_SETBACK_LOW: PowerState.SETBACK_LOW,
+    PRESET_SETBACK_HIGH: PowerState.SETBACK_HIGH,
+}
+STATE_TO_PRESET = {v: k for k, v in PRESET_TO_STATE.items()}
 
 # Used until the unit reports its allowed setpoints.
 DEFAULT_MIN_TEMP = 16
@@ -76,7 +90,9 @@ async def async_setup_entry(
     )
 
 
-class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
+class ItmClimate(  # pylint: disable=too-many-public-methods
+    ItmEntity, ClimateEntity, RestoreEntity
+):
     """An indoor unit.
 
     Home Assistant reads the capability properties (hvac_modes, min/max temp, fan
@@ -96,6 +112,7 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
     """
 
     _attr_name = None  # the device name
+    _attr_translation_key = "unit"
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_target_temperature_step = 1
 
@@ -128,7 +145,17 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
         )
         if self.caps and self.caps.fan_speed:
             features |= ClimateEntityFeature.FAN_MODE
+        if self.unit and self.unit.power_state is not None:
+            features |= ClimateEntityFeature.PRESET_MODE
+        if self._listed and self._listed.airflow_direction is not None:
+            features |= ClimateEntityFeature.SWING_MODE
         return features
+
+    @property
+    def _listed(self) -> Unit | None:
+        """The unit as the list view last showed it, None when not read."""
+        settings = self.coordinator.settings.data
+        return settings.units.get(self._key) if settings else None
 
     @property
     def _current_mode(self) -> HVACMode | None:
@@ -183,6 +210,33 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
     def fan_modes(self) -> list[str] | None:
         """Return the fan speeds, if the unit's fan speed can be set."""
         return list(FAN_SPEEDS) if self.caps and self.caps.fan_speed else None
+
+    @property
+    def preset_mode(self) -> str | None:
+        """Return the setback the unit is in, or none."""
+        if self.unit is None or self.unit.power_state is None:
+            return None
+        if self.unit.power_state in (PowerState.ON, PowerState.OFF):
+            return PRESET_NONE
+        # A setback whose level the iTM does not show is unknown.
+        return STATE_TO_PRESET.get(self.unit.power_state)
+
+    @property
+    def preset_modes(self) -> list[str]:
+        """Return no setback, setback low and setback high."""
+        return [PRESET_NONE, PRESET_SETBACK_LOW, PRESET_SETBACK_HIGH]
+
+    @property
+    def swing_mode(self) -> str | None:
+        """Return the airflow direction: position_0 (horizontal) .. 4, or swing."""
+        return self._listed.airflow_direction if self._listed else None
+
+    @property
+    def swing_modes(self) -> list[str] | None:
+        """Return the airflow directions, if the unit's can be set."""
+        if self._listed and self._listed.airflow_direction is not None:
+            return list(AIRFLOW_DIRECTIONS)
+        return None
 
     @property
     def current_temperature(self) -> float | None:
@@ -354,6 +408,39 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
             fan_speed=fan_mode,
         )
 
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        """Put the unit in setback low or high, or take it out of setback.
+
+        Args:
+        ----
+            preset_mode: none, setback_low or setback_high.
+
+        """
+        state = PRESET_TO_STATE.get(preset_mode)
+        if state is None:  # none: back from setback, a stopped unit stays stopped
+            if self.unit is None or self.preset_mode == PRESET_NONE:
+                return
+            state = PowerState.ON
+        await self.coordinator.async_write(
+            self._key,
+            lambda name: self.coordinator.client.set_power_state(
+                name, state, confirm=False
+            ),
+            power_state=state,
+        )
+
+    async def async_set_swing_mode(self, swing_mode: str) -> None:
+        """Change the airflow direction.
+
+        Args:
+        ----
+            swing_mode: position_0 (horizontal) .. position_4 (down), or swing.
+
+        """
+        await self.coordinator.settings.async_set_unit_settings(
+            self._key, airflow_direction=swing_mode
+        )
+
     async def async_turn_on(self) -> None:
         """Start the unit in its last operation mode; in auto mode it runs already."""
         if self._auto.enabled:
@@ -393,8 +480,16 @@ class ItmClimate(ItmEntity, ClimateEntity, RestoreEntity):
         return round(min(max(target, self.min_temp), self.max_temp))
 
     async def async_added_to_hass(self) -> None:
-        """Restore auto mode, and act on its settings when they change."""
+        """Restore auto mode, and act on its settings when they change.
+
+        Also follow the settings, which hold the airflow direction.
+        """
         await super().async_added_to_hass()
+        self.async_on_remove(
+            self.coordinator.settings.async_add_listener(
+                self._handle_coordinator_update
+            )
+        )
         if (data := await self.async_get_last_extra_data()) is not None:
             self._auto.restore(data.as_dict())
             self._auto.notify()

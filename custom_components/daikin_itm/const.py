@@ -13,6 +13,10 @@ DEFAULT_ZONE_PATH = ""
 # Each poll logs in, reads and logs out; the web UI is free in between (the iTM allows
 # one session).
 SCAN_INTERVAL = timedelta(seconds=60)
+# The settings (schedules, changeover groups, overtime, the menu bar's indicators, and
+# the units' locks, limits and airflow direction) take about twenty requests in two
+# sessions, and rarely change: read them far less often.
+SETTINGS_SCAN_INTERVAL = timedelta(minutes=15)
 # Changes take 3-8 seconds to reach a unit over the Daikin bus. After a change the
 # entities show it right away and the next poll, which confirms it, runs this soon.
 CONFIRM_INTERVAL = timedelta(seconds=10)

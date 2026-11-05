@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
     from .fake_itm import FakeITM
 
-ROOM = "climate.meeting_room"  # 1:1-04, running, cooling, fan medium
+ROOM = "climate.ac_05"  # 1:1-04, running, cooling, fan medium
 
 
 async def _set_fan_mode(hass: HomeAssistant, fan_mode: str) -> None:
@@ -91,11 +91,11 @@ async def test_poll_before_the_change_reaches_the_unit_does_not_undo_it(
         blocking=True,
     )
     await coordinator.async_refresh()
-    assert itm.units[1].mode == "Koelen"
+    assert itm.units[1].mode == "Cool"
     assert state_of(hass, ROOM).state == HVACMode.HEAT
 
     await coordinator.async_refresh()  # now the unit shows it
-    assert itm.units[1].mode == "Verwarmen"
+    assert itm.units[1].mode == "Heat"
     assert state_of(hass, ROOM).state == HVACMode.HEAT
     assert not coordinator._pending
 

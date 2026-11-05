@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.daikin_itm.const import DOMAIN
 
 from . import DATA, SESSION_KEY, leave_session_behind, state_of
+from .fake_itm import FakeZone
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -29,6 +30,7 @@ async def test_config_flow(hass: HomeAssistant, itm: FakeITM) -> None:
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Daikin iTM (10.0.0.1)"
     assert result["result"].unique_id == "10.0.0.1"
+    await hass.async_block_till_done()  # the entry's setup, against the fake iTM
     assert itm.session is None
 
 
@@ -52,18 +54,19 @@ async def test_config_flow_bad_zone(hass: HomeAssistant, itm: FakeITM) -> None:
     )
     assert result["errors"] == {"zone_path": "zone_not_found"}
     assert result["description_placeholders"] == {
-        "available": "Indoor units, Ventilation"
+        "available": "Indoor units, Ventilation, Analog"
     }
     assert itm.session is None
 
 
 async def test_config_flow_empty_zone(hass: HomeAssistant, itm: FakeITM) -> None:
     """Test a zone without units."""
+    itm.root.children[0].children.append(FakeZone("Empty"))
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {**DATA, "zone_path": "Building/Ventilation"}
+        result["flow_id"], {**DATA, "zone_path": "Building/Empty"}
     )
     assert result["errors"] == {"zone_path": "no_units"}
     assert itm.session is None
@@ -122,7 +125,7 @@ async def test_reconfigure(
     assert init_integration.unique_id == "10.0.0.2"
     assert init_integration.data["password"] == "new"
     assert init_integration.title == "Daikin iTM (10.0.0.2)"
-    assert state_of(hass, "climate.meeting_room").state == "cool"
+    assert state_of(hass, "climate.ac_05").state == "cool"
 
 
 async def test_reconfigure_bad_zone(
@@ -162,6 +165,7 @@ async def test_session_left_behind_by_the_config_flow_is_released(
     )
     result = await hass.config_entries.flow.async_configure(result["flow_id"], DATA)
     assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()  # the entry's setup, against the fake iTM
     assert itm.session is None
     assert SESSION_KEY not in hass_storage
 
@@ -192,4 +196,4 @@ async def test_config_flow_units_at_the_top_level(
     result = await hass.config_entries.flow.async_configure(result["flow_id"], data)
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
-    assert state_of(hass, "climate.meeting_room").state == "cool"
+    assert state_of(hass, "climate.ac_05").state == "cool"
