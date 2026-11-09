@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/robbinjanssen/home-assistant-daikin-itm/issues",
   "loggers": ["daikin_itm"],
   "requirements": ["python-daikin-itm==1.2.0"],
-  "version": "1.0.0"
+  "version": "1.2.0"
 }
