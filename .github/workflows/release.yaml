@@ -1,0 +1,38 @@
+---
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Attach the integration to the release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Set the version in the manifest
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${TAG#v}"
+          manifest=custom_components/daikin_itm/manifest.json
+          jq --arg version "${version}" '.version = $version' "${manifest}" > manifest.tmp
+          mv manifest.tmp "${manifest}"
+          cat "${manifest}"
+
+      - name: Zip the integration
+        working-directory: custom_components/daikin_itm
+        run: zip -r "${GITHUB_WORKSPACE}/daikin_itm.zip" . -x '__pycache__/*' '*/__pycache__/*'
+
+      - name: Upload the zip to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "${TAG}" daikin_itm.zip --clobber

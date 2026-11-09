@@ -1,6 +1,6 @@
 [project]
 name = "home-assistant-daikin-itm"
-version = "1.2.0"
+version = "0.0.0"
 description = "Control the indoor units of a Daikin intelligent Touch Manager (iTM) with Home Assistant."
 authors = [{ name = "Robbin Janssen", email = "robbinjanssen@gmail.com" }]
 license = "MIT"

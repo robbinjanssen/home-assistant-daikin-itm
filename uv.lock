@@ -1128,7 +1128,7 @@ wheels = [
 
 [[package]]
 name = "home-assistant-daikin-itm"
-version = "1.2.0"
+version = "0.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "python-daikin-itm" },

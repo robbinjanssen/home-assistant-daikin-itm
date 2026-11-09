@@ -62,10 +62,10 @@ Add `https://github.com/robbinjanssen/home-assistant-daikin-itm` as a custom rep
 
 ## Manual installation
 
-Create a directory called `daikin_itm` in the `<config directory>/custom_components/` directory on your
-Home Assistant instance. Install this integration by copying all files in `/custom_components/daikin_itm/`
-from this repo into the new `<config directory>/custom_components/daikin_itm/` directory you just created,
-and restart Home Assistant.
+Download `daikin_itm.zip` from the [latest release][releases] and unpack it into a new directory
+`<config directory>/custom_components/daikin_itm/` on your Home Assistant instance, then restart Home
+Assistant. Copying `custom_components/daikin_itm/` from the repository works too, but then the
+integration shows version 0.0.0.
 
 ## Configuration
 
@@ -163,6 +163,7 @@ details, and [AGENTS.md](AGENTS.md) for the layout and conventions.
 - [python-daikin-itm][library]
 
 [library]: https://github.com/robbinjanssen/python-daikin-itm
+[releases]: https://github.com/robbinjanssen/home-assistant-daikin-itm/releases/latest
 [library-security]: https://github.com/robbinjanssen/python-daikin-itm#security-notes
 
 [maintenance-shield]: https://img.shields.io/maintenance/yes/2026.svg
