@@ -151,6 +151,9 @@
       },
       "emergency_stop": {
         "name": "Noodstop"
+      },
+      "remote_management": {
+        "name": "Beheer op afstand"
       }
     },
     "switch": {
@@ -168,6 +171,12 @@
       },
       "changeover": {
         "name": "Changeover {name}"
+      },
+      "confirm_dialogs": {
+        "name": "Bevestigingsdialogen"
+      },
+      "screensaver_off_on_error": {
+        "name": "Schermbeveiliging uit bij storing"
       }
     },
     "climate": {
@@ -208,6 +217,33 @@
       },
       "overtime_duration": {
         "name": "Duur overwerktimer"
+      },
+      "setback_high_up": {
+        "name": "Setback hoog: setpoint omhoog"
+      },
+      "setback_high_back": {
+        "name": "Setback hoog: setpoint omlaag"
+      },
+      "setback_low_up": {
+        "name": "Setback laag: setpoint omhoog"
+      },
+      "setback_low_back": {
+        "name": "Setback laag: setpoint omlaag"
+      },
+      "setback_recovery_cool": {
+        "name": "Setback-herstel koelen"
+      },
+      "setback_recovery_heat": {
+        "name": "Setback-herstel verwarmen"
+      },
+      "panel_backlight": {
+        "name": "Aanraakscherm verlichting"
+      },
+      "panel_buzzer_volume": {
+        "name": "Aanraakscherm zoemervolume"
+      },
+      "panel_key_click_volume": {
+        "name": "Aanraakscherm toetsklikvolume"
       }
     },
     "select": {
@@ -232,6 +268,30 @@
           "allowed": "Toegestaan",
           "forbidden": "Verboden"
         }
+      },
+      "panel_buzzer_duration": {
+        "name": "Aanraakscherm zoemerduur",
+        "state": {
+          "1": "1 minuut",
+          "3": "3 minuten",
+          "5": "5 minuten",
+          "continuous": "Tot gestopt"
+        }
+      },
+      "panel_screensaver_mode": {
+        "name": "Aanraakscherm schermbeveiliging",
+        "state": {
+          "off": "Uit",
+          "backlight_off": "Verlichting uit",
+          "screen_1": "Scherm 1",
+          "screen_2": "Scherm 2",
+          "screen_3": "Scherm 3"
+        }
+      }
+    },
+    "button": {
+      "sync_clock": {
+        "name": "Klok synchroniseren"
       }
     }
   },

@@ -43,6 +43,7 @@ from .const import (
     PENDING_TIMEOUT,
     SCAN_INTERVAL,
     SETTINGS_SCAN_INTERVAL,
+    SYSTEM_SCREENS,
 )
 
 if TYPE_CHECKING:
@@ -480,9 +481,11 @@ class ItmSettings:
 class ItmSettingsCoordinator(DataUpdateCoordinator[ItmSettings]):
     """Read the settings: the menu's configuration and the units' list view.
 
-    The menu bar's indicators, the schedule programs, the auto changeover groups and
-    the overtime duration come from one session (fetch_config), the units' locks,
-    limits and airflow direction from a second (the list view, one request).
+    The menu bar's indicators, the version and clock, the schedule programs, the auto
+    changeover groups, setback, the overtime duration and a few system screens (the
+    touch panel, the confirm dialogs and remote management) come from one session
+    (fetch_config), the units' locks, limits and airflow direction from a second
+    (the list view, one request).
     """
 
     config_entry: ItmConfigEntry
@@ -522,7 +525,7 @@ class ItmSettingsCoordinator(DataUpdateCoordinator[ItmSettings]):
 
         """
         try:
-            config = await self.client.fetch_config()
+            config = await self.client.fetch_config(system=SYSTEM_SCREENS)
             listed = await self.client.fetch_units(view="list")
         except LoginRejected as err:
             # Usually someone uses the web UI; the units' coordinator tells when
@@ -613,6 +616,24 @@ class ItmSettingsCoordinator(DataUpdateCoordinator[ItmSettings]):
         return dataclasses.replace(
             data, config=dataclasses.replace(data.config, **changes)
         )
+
+    def replace_system(self, data: ItmSettings, **changes: Any) -> ItmSettings:
+        """Return the settings with some of the system settings replaced.
+
+        Args:
+        ----
+            data: The settings.
+            **changes: The SystemSettings fields to replace.
+
+        Returns:
+        -------
+            The new settings.
+
+        """
+        system = data.config.system
+        if system is None:
+            return data
+        return self.replace_config(data, system=dataclasses.replace(system, **changes))
 
 
 def _limit(limit: TempLimit) -> tuple[float, float] | None:

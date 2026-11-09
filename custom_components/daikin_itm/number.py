@@ -1,14 +1,18 @@
-"""The units' setpoint limits and the iTM's overtime timer duration."""
+"""The units' setpoint limits; on the iTM's device its settings.
+
+The overtime timer duration, the setback offsets and recovery temperatures, and the
+touch panel's backlight and volumes.
+"""
 
 from __future__ import annotations
 
 import dataclasses
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.number import NumberDeviceClass, NumberEntity
 from homeassistant.const import EntityCategory, UnitOfTemperature, UnitOfTime
 
-from daikin_itm import TempLimit
+from daikin_itm import HardwareSettings, SetbackSettings, TempLimit
 
 from .entity import (
     ItmHubEntity,
@@ -21,7 +25,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-    from .coordinator import ItmConfigEntry, ItmSettingsCoordinator
+    from .coordinator import ItmConfigEntry, ItmSettings, ItmSettingsCoordinator
 
 # The range the iTM offers for setpoints; it refuses limits outside a unit's range.
 LIMIT_MIN = 16
@@ -48,6 +52,34 @@ LIMITS = (
     LimitDescription("cool_limit", 1, "cool_limit_max"),
     LimitDescription("heat_limit", 0, "heat_limit_min"),
     LimitDescription("heat_limit", 1, "heat_limit_max"),
+)
+
+# The SetbackSettings fields: the offsets of setback high and low, and the recovery
+# temperatures. All are differences in °C, so they have no temperature device class
+# (which would convert them as absolute temperatures).
+SETBACK = (
+    "high_up",
+    "high_back",
+    "low_up",
+    "low_back",
+    "recovery_cool",
+    "recovery_heat",
+)
+
+
+@dataclasses.dataclass(frozen=True)
+class PanelDescription:
+    """A touch panel setting: a HardwareSettings field and its range."""
+
+    field: str
+    minimum: int
+    maximum: int
+
+
+PANEL = (
+    PanelDescription("backlight", 1, 8),
+    PanelDescription("buzzer_volume", 0, 5),
+    PanelDescription("key_click_volume", 0, 5),
 )
 
 
@@ -83,6 +115,37 @@ async def async_setup_entry(
                 else []
             ),
             lambda _: [ItmOvertimeNumber(settings)],
+        )
+    )
+
+    def setback() -> list[str]:
+        values = settings.data.config.setback
+        return [key for key in SETBACK if values.options.get(key)]
+
+    entry.async_on_unload(
+        add_entities_for_new_items(
+            settings,
+            async_add_entities,
+            setback,
+            lambda key: [ItmSetbackNumber(settings, key)],
+        )
+    )
+
+    def panel() -> list[str]:
+        system = settings.data.config.system
+        hardware = system.hardware if system else None
+        if hardware is None:
+            return []
+        return [d.field for d in PANEL if getattr(hardware, d.field) is not None]
+
+    entry.async_on_unload(
+        add_entities_for_new_items(
+            settings,
+            async_add_entities,
+            panel,
+            lambda field: [
+                ItmPanelNumber(settings, d) for d in PANEL if d.field == field
+            ],
         )
     )
 
@@ -192,4 +255,123 @@ class ItmOvertimeNumber(ItmHubEntity["ItmSettingsCoordinator"], NumberEntity):
             lambda data, minutes: self.coordinator.replace_config(
                 data, overtime_minutes=minutes
             ),
+        )
+
+
+class ItmSetbackNumber(ItmHubEntity["ItmSettingsCoordinator"], NumberEntity):
+    """A setback offset or recovery temperature, within what the iTM offers."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_native_step = 1
+
+    def __init__(self, coordinator: ItmSettingsCoordinator, field: str) -> None:
+        """Initialize the number.
+
+        Args:
+        ----
+            coordinator: The settings coordinator.
+            field: The SetbackSettings field.
+
+        """
+        super().__init__(coordinator, f"setback_{field}")
+        self._field = field
+        self._attr_translation_key = f"setback_{field}"
+
+    @property
+    def _options(self) -> tuple[int, ...]:
+        """The values the iTM offers."""
+        return self.coordinator.data.config.setback.options.get(self._field, ())
+
+    @property
+    def available(self) -> bool:
+        """Return if the iTM showed the setting."""
+        return super().available and bool(self._options)
+
+    @property
+    def native_min_value(self) -> float:
+        """Return the lowest value the iTM offers."""
+        return min(self._options, default=0)
+
+    @property
+    def native_max_value(self) -> float:
+        """Return the highest value the iTM offers."""
+        return max(self._options, default=0)
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the setting."""
+        value: int | None = getattr(self.coordinator.data.config.setback, self._field)
+        return value
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Change the setting.
+
+        Args:
+        ----
+            value: One of the values the iTM offers.
+
+        """
+
+        def update(data: ItmSettings, result: SetbackSettings) -> ItmSettings:
+            return self.coordinator.replace_config(data, setback=result)
+
+        await self.coordinator.async_write(
+            lambda: self.coordinator.client.set_setback(**{self._field: int(value)}),
+            update,
+        )
+
+
+class ItmPanelNumber(ItmHubEntity["ItmSettingsCoordinator"], NumberEntity):
+    """The touch panel's backlight level, buzzer volume or key click volume."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_native_step = 1
+
+    def __init__(
+        self, coordinator: ItmSettingsCoordinator, description: PanelDescription
+    ) -> None:
+        """Initialize the number.
+
+        Args:
+        ----
+            coordinator: The settings coordinator.
+            description: The setting and its range.
+
+        """
+        super().__init__(coordinator, f"panel_{description.field}")
+        self._field = description.field
+        self._attr_translation_key = f"panel_{description.field}"
+        self._attr_native_min_value = description.minimum
+        self._attr_native_max_value = description.maximum
+
+    @property
+    def _hardware(self) -> HardwareSettings | None:
+        system = self.coordinator.data.config.system
+        return system.hardware if system else None
+
+    @property
+    def available(self) -> bool:
+        """Return if the touch panel settings were read."""
+        return super().available and self._hardware is not None
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the setting."""
+        hardware = self._hardware
+        value: int | None = getattr(hardware, self._field) if hardware else None
+        return value
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Change the setting.
+
+        Args:
+        ----
+            value: The new level or volume.
+
+        """
+        changes: dict[str, Any] = {self._field: int(value)}
+        await self.coordinator.async_write(
+            lambda: self.coordinator.client.set_hardware(**changes),
+            lambda data, result: self.coordinator.replace_system(data, hardware=result),
         )

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from homeassistant.const import CONF_HOST, Platform
+from homeassistant.core import callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
 
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 
 PLATFORMS = [
     Platform.BINARY_SENSOR,
+    Platform.BUTTON,
     Platform.CLIMATE,
     Platform.NUMBER,
     Platform.SELECT,
@@ -70,10 +72,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ItmConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # The settings take about twenty requests; read them without delaying the
     # units. Their entities are added once they have been read.
+    entry.async_on_unload(
+        coordinator.settings.async_add_listener(
+            lambda: _async_update_firmware(hass, coordinator)
+        )
+    )
     entry.async_create_task(
         hass, coordinator.settings.async_refresh(), "daikin_itm settings"
     )
     return True
+
+
+@callback
+def _async_update_firmware(hass: HomeAssistant, coordinator: ItmCoordinator) -> None:
+    """Show the iTM's firmware version on its device, once the settings are read.
+
+    Args:
+    ----
+        hass: The HomeAssistant instance.
+        coordinator: The units' coordinator, with the settings.
+
+    """
+    data = coordinator.settings.data
+    if data is None or coordinator.hub_device_id is None:
+        return
+    info = data.config.info
+    if not info.version:
+        return
+    version = f"{info.version} ({info.build})" if info.build else info.version
+    devices = dr.async_get(hass)
+    device = devices.async_get(coordinator.hub_device_id)
+    if isinstance(device, dr.DeviceEntry) and device.sw_version != version:
+        devices.async_update_device(device.id, sw_version=version)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ItmConfigEntry) -> bool:

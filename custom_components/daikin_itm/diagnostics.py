@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from .coordinator import ItmConfigEntry
 
 TO_REDACT = {CONF_HOST, CONF_PASSWORD, CONF_USERNAME}
+# In the settings: the remote management server the iTM connects to.
+SETTINGS_TO_REDACT = {"ip_address"}
 
 
 async def async_get_config_entry_diagnostics(
@@ -60,5 +62,9 @@ async def async_get_config_entry_diagnostics(
             for name, point in coordinator.analog.items()
         },
         "settings_last_update_success": settings.last_update_success,
-        "settings": dataclasses.asdict(settings.data) if settings.data else None,
+        "settings": (
+            async_redact_data(dataclasses.asdict(settings.data), SETTINGS_TO_REDACT)
+            if settings.data
+            else None
+        ),
     }
