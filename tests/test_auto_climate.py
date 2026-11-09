@@ -61,10 +61,17 @@ if TYPE_CHECKING:
 
     from .fake_itm import FakeITM
 
-ROOM = "climate.meeting_room"  # 1:1-04, running, cooling at 20 °C, room 21 °C
-SENSOR = "sensor.meeting_room_auto_mode"
-VENTILATE = "switch.meeting_room_ventilate_in_auto_mode"
+ROOM = "climate.ac_05"  # 1:1-04, running, cooling at 20 °C, room 21 °C
+SENSOR = "sensor.ac_05_auto_mode"
+VENTILATE = "switch.ac_05_ventilate_in_auto_mode"
 OUTDOOR = "sensor.daikin_itm_10_0_0_1_outdoor_temperature"
+
+
+@pytest.fixture(autouse=True)
+def cooling_at_20(itm: FakeITM) -> None:
+    """Let the unit under test cool at 20 °C, allowing 20 to 25 °C."""
+    itm.units[1].setpoint = 20
+    itm.units[1].setpoint_range = (20, 21, 22, 23, 24, 25)
 
 
 async def _call(
@@ -115,7 +122,7 @@ async def test_start(
     events = async_capture_events(hass, EVENT_AUTO_MODE)
     await _start(hass)
     unit = itm.units[1]
-    assert (unit.mode, unit.setpoint) == ("Verwarmen", 20)
+    assert (unit.mode, unit.setpoint) == ("Heat", 20)
     await _minutes(hass, freezer, 1)  # the read that shows heating sets the target
     assert unit.setpoint == 21
     state = state_of(hass, ROOM)
@@ -136,7 +143,7 @@ async def test_start(
 async def test_start_with_the_unit_setpoint(hass: HomeAssistant, itm: FakeITM) -> None:
     """Test auto mode keeps the setpoint of a running unit, here by ventilating."""
     await _call(hass, SERVICE_SET_HVAC_MODE, **{ATTR_HVAC_MODE: HVACMode.AUTO})
-    assert itm.units[1].mode == "Ventilator"  # 21 °C is past the target of 20 °C
+    assert itm.units[1].mode == "Fan"  # 21 °C is past the target of 20 °C
     assert state_of(hass, ROOM).attributes[ATTR_TEMPERATURE] == 20
     assert state_of(hass, SENSOR).state == "fan"
     await _call(hass, SERVICE_SET_HVAC_MODE, **{ATTR_HVAC_MODE: HVACMode.AUTO})
@@ -147,27 +154,27 @@ async def test_set_temperature_with_auto_needs_auto_mode(
     hass: HomeAssistant, itm: FakeITM, mock_config_entry: MockConfigEntry
 ) -> None:
     """Test set_temperature with auto mode on a unit that has none is refused."""
-    itm.units[1].modes = ("Ventilator", "Koelen")
+    itm.units[1].modes = ("Fan", "Cool")
     mock_config_entry.add_to_hass(hass)
     await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
     with pytest.raises(ServiceValidationError) as err:
         await _start(hass)
     assert err.value.translation_key == "mode_not_supported"
-    assert itm.units[1].mode == "Koelen"
+    assert itm.units[1].mode == "Cool"
 
 
 async def test_no_ventilation_without_fan_mode(
     hass: HomeAssistant, itm: FakeITM, mock_config_entry: MockConfigEntry
 ) -> None:
     """Test auto mode heats past the target on a unit without fan mode."""
-    itm.units[1].modes = ("Koelen", "Verwarmen")
+    itm.units[1].modes = ("Cool", "Heat")
     mock_config_entry.add_to_hass(hass)
     await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
     assert hass.states.get(VENTILATE) is None
     await _start(hass, target=20)  # 21 °C would ventilate
-    assert itm.units[1].mode == "Verwarmen"
+    assert itm.units[1].mode == "Heat"
     assert state_of(hass, SENSOR).state == "heat"
 
 
@@ -175,7 +182,7 @@ async def test_unit_without_heating_has_no_auto_mode(
     hass: HomeAssistant, itm: FakeITM, mock_config_entry: MockConfigEntry
 ) -> None:
     """Test auto mode needs heating and cooling."""
-    itm.units[1].modes = ("Ventilator", "Koelen")
+    itm.units[1].modes = ("Fan", "Cool")
     mock_config_entry.add_to_hass(hass)
     await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
@@ -202,7 +209,7 @@ async def test_ventilates_when_warm_and_heats_again(
         "active_time",
     )
     await _minutes(hass, freezer, 10)
-    assert unit.mode == "Ventilator"
+    assert unit.mode == "Fan"
     sensor = state_of(hass, SENSOR)
     assert sensor.state == "fan"
     assert sensor.attributes["reason"] == "target_reached"
@@ -211,7 +218,7 @@ async def test_ventilates_when_warm_and_heats_again(
 
     unit.temp = 20.2
     await _minutes(hass, freezer, 25)
-    assert unit.mode == "Verwarmen"
+    assert unit.mode == "Heat"
     assert state_of(hass, SENSOR).attributes["reason"] == "below_target"
 
 
@@ -221,12 +228,12 @@ async def test_ventilation_turned_off(
 ) -> None:
     """Test turning ventilation off while ventilating heats again right away."""
     await _start(hass, target=20)  # 21 °C: ventilate
-    assert itm.units[1].mode == "Ventilator"
+    assert itm.units[1].mode == "Fan"
     await _minutes(hass, freezer, 1)
     await _call(hass, "turn_off", VENTILATE)
     await hass.async_block_till_done(wait_background_tasks=True)
     assert state_of(hass, VENTILATE).state == "off"
-    assert itm.units[1].mode == "Verwarmen"
+    assert itm.units[1].mode == "Heat"
     assert itm.units[1].setpoint == 20
     assert state_of(hass, SENSOR).attributes["reason"] == "ventilation_off"
     await _call(hass, "turn_on", VENTILATE)
@@ -239,7 +246,7 @@ async def test_changed_at_the_unit_stops_auto_mode(
 ) -> None:
     """Test a mode chosen at the remote controller ends auto mode."""
     await _start(hass)
-    itm.units[1].mode = "Koelen"
+    itm.units[1].mode = "Cool"
     await _minutes(hass, freezer, 2)
     assert state_of(hass, ROOM).state == HVACMode.COOL
     sensor = state_of(hass, SENSOR)
@@ -281,7 +288,7 @@ async def test_target_set_after_restart(
     freezer: FrozenDateTimeFactory,
 ) -> None:
     """Test auto mode sets the target after a restart when the setpoint differs."""
-    itm.units[1].mode = "Verwarmen"
+    itm.units[1].mode = "Heat"
     itm.units[1].setpoint = 23
     await _restart_in_auto(hass, mock_config_entry, target=21)
     await _minutes(hass, freezer, 1)
@@ -311,7 +318,7 @@ async def test_another_mode_stops_auto_mode(hass: HomeAssistant, itm: FakeITM) -
     await _call(hass, SERVICE_TURN_ON)  # runs already
     assert state_of(hass, ROOM).state == HVACMode.AUTO
     await _call(hass, SERVICE_SET_HVAC_MODE, **{ATTR_HVAC_MODE: HVACMode.COOL})
-    assert itm.units[1].mode == "Koelen"
+    assert itm.units[1].mode == "Cool"
     sensor = state_of(hass, SENSOR)
     assert (sensor.state, sensor.attributes["reason"]) == ("off", "manual")
 
@@ -330,15 +337,15 @@ async def test_failed_change(
     await _start(hass)
     itm.units[1].temp = 21.8
     await _minutes(hass, freezer, 29)
-    itm.units[1].modes = ("Koelen", "Verwarmen")  # the iTM refuses fan for a while
+    itm.units[1].modes = ("Cool", "Heat")  # the iTM refuses fan for a while
     await _minutes(hass, freezer, 1)
-    itm.units[1].modes = ("Ventilator", "Koelen", "Verwarmen")
-    assert itm.units[1].mode == "Verwarmen"
+    itm.units[1].modes = ("Fan", "Cool", "Heat")
+    assert itm.units[1].mode == "Heat"
     sensor = state_of(hass, SENSOR)
     assert sensor.state == "heat"
     assert sensor.attributes["reason"] == "write_failed"
     await _minutes(hass, freezer, 21)
-    assert itm.units[1].mode == "Ventilator"
+    assert itm.units[1].mode == "Fan"
 
 
 async def _restart_in_auto(
@@ -366,7 +373,7 @@ async def test_restored_after_restart(
     hass: HomeAssistant, itm: FakeITM, mock_config_entry: MockConfigEntry
 ) -> None:
     """Test auto mode survives a restart."""
-    itm.units[1].mode = "Verwarmen"
+    itm.units[1].mode = "Heat"
     itm.units[1].setpoint = 22
     await _restart_in_auto(hass, mock_config_entry, target=22)
     state = state_of(hass, ROOM)
@@ -402,7 +409,7 @@ async def test_logbook(hass: HomeAssistant) -> None:
         },
     )
     assert described[EVENT_AUTO_MODE](event) == {
-        "name": "Meeting room",
+        "name": "AC 05",
         "message": (
             "Cool: too warm, changing over to cooling (Room temperature 22.6 °C, "
             "Target 21 °C, Outdoor temperature 15.2 °C)"
@@ -440,7 +447,7 @@ async def test_without_outdoor_temperature(
     assert state_of(hass, OUTDOOR).state == STATE_UNAVAILABLE
     await _start(hass)
     # No season known: the unit was cooling, and the room is at the target.
-    assert itm.units[1].mode == "Koelen"
+    assert itm.units[1].mode == "Cool"
     assert state_of(hass, SENSOR).attributes["outdoor_temperature"] is None
 
 
@@ -525,7 +532,7 @@ async def test_stopped_while_switching(
         release.set()
         await choose
         await hass.async_block_till_done(wait_background_tasks=True)
-    assert itm.units[1].mode == "Koelen"
+    assert itm.units[1].mode == "Cool"
     assert state_of(hass, ROOM).state == HVACMode.COOL
     sensor = state_of(hass, SENSOR)
     assert (sensor.state, sensor.attributes["reason"]) == ("off", "manual")
@@ -539,7 +546,7 @@ async def test_target_kept_when_the_unit_allows_less(
     await _call(hass, "turn_off", VENTILATE)
     await _start(hass, target=20)  # 21 °C, cold outside: heating
     unit = itm.units[1]
-    assert unit.mode == "Verwarmen"
+    assert unit.mode == "Heat"
     unit.setpoint_range = (21, 22, 23, 24, 25)  # heating allows 21 °C and up
     unit.setpoint = 21
     await _minutes(hass, freezer, 3)
@@ -590,13 +597,13 @@ async def test_refused_logins_add_no_readings(
     unit.temp = 21.8
     itm.session = "d" * 32  # someone uses the web interface
     await _minutes(hass, freezer, 20)
-    assert unit.mode == "Verwarmen"
+    assert unit.mode == "Heat"
     assert not events  # no decisions, so no writes that fail
     itm.session = None
     await _minutes(hass, freezer, 14)
-    assert unit.mode == "Verwarmen"  # 15 minutes of new readings first
+    assert unit.mode == "Heat"  # 15 minutes of new readings first
     await _minutes(hass, freezer, 2)
-    assert unit.mode == "Ventilator"
+    assert unit.mode == "Fan"
 
 
 async def test_outdoor_average_kept_for_a_while(

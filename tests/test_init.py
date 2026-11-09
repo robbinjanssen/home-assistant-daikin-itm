@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
     from .fake_itm import FakeITM
 
-ROOM = "climate.meeting_room"
+ROOM = "climate.ac_05"
 
 
 async def test_unload(hass: HomeAssistant, init_integration: MockConfigEntry) -> None:
@@ -63,7 +63,7 @@ async def test_stable_ids_and_devices(
     assert entity.device_id is not None
     device = devices.async_get(entity.device_id)
     assert isinstance(device, dr.DeviceEntry)
-    assert (device.name, device.model) == ("Meeting room", "Indoor unit")
+    assert (device.name, device.model) == ("AC 05", "Indoor unit")
     assert device.via_device_id is not None
     hub = devices.async_get(device.via_device_id)
     assert isinstance(hub, dr.DeviceEntry)
@@ -88,7 +88,10 @@ async def test_renamed_unit_keeps_its_entities(
     entities = er.async_entries_for_config_entry(
         er.async_get(hass), init_integration.entry_id
     )
-    assert len(entities) == 3 * 6 + 1  # and the outdoor temperature
+    # Per unit: climate, room temperature, malfunction, filter, auto mode sensor and
+    # switch, three remote locks, two limit switches and four limits; and the iTM's
+    # outdoor temperature, three schedule programs, three indicators and overtime.
+    assert len(entities) == 3 * 15 + 8
     await hass.services.async_call(
         "climate",
         "set_temperature",
@@ -277,6 +280,6 @@ async def test_diagnostics(
         "username": "**REDACTED**",
         "password": "**REDACTED**",
     }
-    assert diagnostics["units"]["1:1-04"]["setpoint"] == 20
-    assert diagnostics["capabilities"]["1:1-04"]["description"] == "Meeting room"
+    assert diagnostics["units"]["1:1-04"]["setpoint"] == 23
+    assert diagnostics["capabilities"]["1:1-04"]["description"] == "AC 05"
     assert "secret" not in str(diagnostics)

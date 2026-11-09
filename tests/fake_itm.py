@@ -9,110 +9,108 @@
 
 from __future__ import annotations
 
-import hashlib
-import itertools
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
-from daikin_itm.protocol import PART_UPDATE_CODE, SCREEN_UPDATE_CODE, Reader, Writer
+from daikin_itm.protocol import (
+    _DIALOG_LAYOUTS,
+    PART_UPDATE_CODE,
+    SCREEN_UPDATE_CODE,
+    Reader,
+    Writer,
+)
+
+from .fake_itm_base import (
+    CAPACITY_OPTIONS,
+    DST_HOURS,
+    EVENT_MODES,
+    EXTRA_COMBOS,
+    EXTRA_CONTROLS,
+    EXTRA_NUMBERS,
+    EXTRA_OWNER,
+    EXTRA_RADIOS,
+    HARDWARE_OPTIONS,
+    HISTORY_COLUMNS,
+    HISTORY_ROWS,
+    LIST_HEADERS,
+    LOCK_LABELS,
+    LOW_NOISE_OPTIONS,
+    MENU_CLOSE_PARTS,
+    MENU_SCREENS,
+    MONTHS,
+    MULTISTATE_OPTIONS,
+    OPTIONAL_BUTTONS,
+    POWER_OPTIONS,
+    ROW_LISTS,
+    SCREENSAVER_MODES,
+    SERVICE_BUTTONS,
+    SETTINGS_TABS,
+    SYSTEM_BUTTONS,
+    SYSTEM_WRITE_SCREENS,
+    WEEKDAYS,
+    WEEKS,
+    FakeAnalog,
+    FakeGroup,
+    FakeUnit,
+    FakeVentilation,
+    FakeZone,
+    Update,
+    _enabled,
+    _rows,
+)
+from .fake_itm_menu import MenuMixin
+from .fake_itm_panel import PanelMixin
+from .fake_itm_system import SystemWrites
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable
 
-POWER_OPTIONS = ["Start", "SB Laag", "SB Hoog", "Stop"]
+__all__ = [
+    "CAPACITY_OPTIONS",
+    "DST_HOURS",
+    "EVENT_MODES",
+    "EXTRA_COMBOS",
+    "EXTRA_CONTROLS",
+    "EXTRA_NUMBERS",
+    "EXTRA_OWNER",
+    "EXTRA_RADIOS",
+    "HARDWARE_OPTIONS",
+    "HISTORY_COLUMNS",
+    "HISTORY_ROWS",
+    "LIST_HEADERS",
+    "LOCK_LABELS",
+    "LOW_NOISE_OPTIONS",
+    "MENU_CLOSE_PARTS",
+    "MENU_SCREENS",
+    "MONTHS",
+    "MULTISTATE_OPTIONS",
+    "OPTIONAL_BUTTONS",
+    "POWER_OPTIONS",
+    "ROW_LISTS",
+    "SCREENSAVER_MODES",
+    "SERVICE_BUTTONS",
+    "SETTINGS_TABS",
+    "SYSTEM_BUTTONS",
+    "SYSTEM_WRITE_SCREENS",
+    "WEEKDAYS",
+    "WEEKS",
+    "_ENCODERS",
+    "FakeAnalog",
+    "FakeGroup",
+    "FakeITM",
+    "FakeUnit",
+    "FakeVentilation",
+    "FakeZone",
+    "SystemWrites",
+    "Update",
+    "_enabled",
+    "_encode_data",
+    "_encode_part",
+    "_rows",
+]
 
-# (update type, screen, data, [(part, part type, value)])
-Update = tuple[str, int, list[Any], list[tuple[int, str, Any]]]
 
-
-@dataclass
-class FakeUnit:
-    """An indoor unit."""
-
-    name: str
-    running: bool = True
-    setpoint: int = 21
-    setpoint_range: tuple[int, ...] = (19, 20, 21, 22, 23, 24)
-    temp: float = 21.0
-    mode: str = "Verwarmen"
-    modes: tuple[str, ...] = ("Ventilator", "Koelen", "Verwarmen")
-    fan_icon: int | None = 3011  # None: no fan speed control
-    point_id: str = "100"
-    address: str = "1-00"
-    description: str = ""
-
-
-@dataclass
-class FakeZone:
-    """A zone holding zones and units."""
-
-    name: str
-    children: list[Any] = field(default_factory=list)  # FakeZone | FakeUnit
-
-
-class FakeITM:  # pylint: disable=too-many-instance-attributes
+class FakeITM(PanelMixin, MenuMixin):
     """The simulated iTM; feed it request bodies with handle()."""
-
-    def __init__(self, username: str = "user", password: str = "secret") -> None:
-        """Set up three units in Building/Indoor units, one of them stopped."""
-        self.username = username
-        self.digest = hashlib.sha256(password.encode()).hexdigest()
-        self.units = [
-            FakeUnit(
-                "1:1-00",
-                setpoint=21,
-                point_id="101",
-                address="1-00",
-                description="Office",
-            ),
-            FakeUnit(
-                "1:1-04",
-                setpoint=20,
-                setpoint_range=(20, 21, 22, 23, 24, 25),
-                mode="Koelen",
-                point_id="105",
-                address="1-04",
-                description="Meeting room",
-            ),
-            FakeUnit(
-                "1:1-09",
-                running=False,
-                setpoint=16,
-                setpoint_range=tuple(range(16, 33)),
-                mode="Koelen",
-                modes=("Ventilator", "Koelen", "Verwarmen", "Drogen", "Auto"),
-                fan_icon=None,
-                point_id="110",
-                address="1-09",
-            ),
-        ]
-        self.root = FakeZone(
-            "top",
-            [
-                FakeZone(
-                    "Building",
-                    [FakeZone("Indoor units", self.units), FakeZone("Ventilation")],
-                )
-            ],
-        )
-        self.session: str | None = None  # active token
-        self.tokens: Iterator[str] = (f"{i:032x}" for i in itertools.count(1))
-        self.requests: list[dict[str, Any]] = []
-        self.fail_next: Exception | None = None
-        self.dialog: dict[str, Any] | None = None
-        # Changes reach the unit only after this many further logins (the real bus
-        # takes a few seconds).
-        self.latency_logins = 0
-        self.web_version = "Ver1.32.00"
-        self._pending: list[list[Any]] = []  # [logins_left, callable, unit]
-        # Writes sent while an earlier change to the same unit was still pending.
-        self.overlaps = 0
-        self.path: list[FakeZone] = [self.root]
-        self.selected = 0
-        # (part, type) -> value the client is believed to show
-        self.shown: dict[tuple[int, str], Any] = {}
-        self.pending_setpoint: int | None = None
-        self.pending_power: int | None = None
 
     # -- request handling ---------------------------------------------------------
     def handle(self, body: str) -> str:
@@ -138,7 +136,7 @@ class FakeITM:  # pylint: disable=too-many-instance-attributes
         if ev["event"] == 0:  # INIT
             if ev["string"] != self.web_version:
                 return self._reply(None, [("LOGOUT", -1, [2, self.web_version], [])])
-            return self._reply(None, [("OPEN", 1203, [-1], [(0, "LABEL", "Gebr")])])
+            return self._reply(None, [("OPEN", 1203, [-1], [(0, "LABEL", "User")])])
         if ev["screen"] == 1203 and ev["event"] == 1:
             return self._login(ev["string"])
         if self.session is None or token != self.session:
@@ -146,7 +144,16 @@ class FakeITM:  # pylint: disable=too-many-instance-attributes
         if ev["event"] == 10:  # logout
             self.session = None
             return self._reply(None, [])
-        return self._reply(self.session, self._event(ev))
+        return self._reply(self.session, self._list_or_event(ev))
+
+    def _list_or_event(self, ev: dict[str, Any]) -> list[Update]:
+        if ev["event"] == 1 and (ev["screen"], ev["part"]) in ROW_LISTS:
+            # A list takes its selection as INTARRAY (the web UI's
+            # onSelectedMultiItem); the real iTM ignores a plain INT there.
+            if ev["dtype"] != 8 or not ev["array"]:
+                return []
+            ev = {**ev, "dtype": 1, "number": ev["array"][0]}
+        return self._event(ev)
 
     def _login(self, s: str) -> str:
         n = int(s[:4])
@@ -154,7 +161,7 @@ class FakeITM:  # pylint: disable=too-many-instance-attributes
         if self.session is not None or user != self.username or digest != self.digest:
             return self._reply(
                 None,
-                [("DLG_OPEN", 1203, [6, 1, "Kan niet aanmelden", "Fout", "OK"], [])],
+                [("DLG_OPEN", 1203, [6, 1, "Cannot log in", "Error", "OK"], [])],
             )
         self.session = next(self.tokens)
         for p in self._pending:
@@ -167,10 +174,14 @@ class FakeITM:  # pylint: disable=too-many-instance-attributes
         self.shown = {}
         self.pending_setpoint = None
         self.pending_power = None
+        self.confirming_setback = None
+        self.service_mode = False
+        self.corners = []
         return self._reply(
             self.session,
             [
-                ("LOGIN", -1, [102, "Informatie", ""], []),
+                ("LOGIN", -1, [102, "Information", ""], []),
+                ("OPEN", 0, [-1], self._menu_bar()),
                 ("OPEN", 1, [-1], [(6, "ICONPANEL", self._icons())]),
                 ("OPEN", 4, [-1], self._panel_delta()),
             ],
@@ -181,7 +192,17 @@ class FakeITM:  # pylint: disable=too-many-instance-attributes
         routes: list[tuple[bool, Callable[[dict[str, Any]], list[Update]]]] = [
             (screen == 1 and part == 6 and event == 1, self._select_icon),
             (screen == 1 and part == 2 and event == 1, self._zone_down),
+            (screen == 1 and part == 4 and event == 1, self._list_view),
+            (screen == 2 and part == 6 and event == 1, self._icon_view),
+            (screen == 0 and part == 19 and event == 1, self._error_information),
+            (screen == 10 and part == 1 and event == 1, self._close_errors),
+            (event == 4, self._polling),
+            (screen in {0, 5} or screen in self.open_screens, self._menu),
             (screen == 4 and event == 1 and part in {9, 11}, self._choose),
+            (
+                screen == 4 and part == 24 and self.confirming_setback is not None,
+                self._confirm_setback,
+            ),
             (screen == 4 and part == 17 and event == 1, self._open_dialog),
             (screen == 4 and part == 7 and event == 1, self._details),
             (screen == 9 and part == 15, lambda _: [("CLOSE", 9, [], [])]),
@@ -192,180 +213,6 @@ class FakeITM:  # pylint: disable=too-many-instance-attributes
             if matches:
                 return handler(ev)
         return []
-
-    def _select_icon(self, ev: dict[str, Any]) -> list[Update]:
-        self.selected = ev["number"]
-        return [("UPDATE", 1, [], []), ("UPDATE", 4, [], self._panel_delta())]
-
-    def _zone_down(self, _ev: dict[str, Any]) -> list[Update]:
-        self.path.append(cast("FakeZone", self.path[-1].children[self.selected]))
-        self.selected = 0
-        return [
-            ("UPDATE", 1, [], [(6, "ICONPANEL", self._icons())]),
-            ("UPDATE", 4, [], self._panel_delta()),
-        ]
-
-    def _choose(self, ev: dict[str, Any]) -> list[Update]:
-        """Pick on/off (part 9) or a setpoint (part 11) on the operation panel."""
-        self._check_overlap()
-        item = self._item()
-        if ev["part"] == 11:
-            self.pending_setpoint = item.setpoint_range[ev["number"]]
-        else:
-            self.pending_power = ev["number"]
-        # The client already shows its own pick.
-        self.shown[ev["part"], "SINGLE_SELIDX"] = ev["number"]
-        return [("UPDATE", 4, [], [])]
-
-    def _details(self, _ev: dict[str, Any]) -> list[Update]:
-        u = self._item()
-        chars = (
-            "Zone:\nFloor 1&gt;Building&gt;Indoor units\n\nThermostaatstatus [UIT]\n"
-        )
-        parts = [
-            (2, "TEXT", u.name),
-            (4, "TEXT", u.point_id),
-            (6, "TEXT", "Indoor unit"),
-            (8, "TEXT", "1"),
-            (10, "TEXT", u.address),
-            (12, "TEXT", u.description),
-            (14, "TEXT", chars),
-        ]
-        return [("OPEN", 9, [-1], parts)]
-
-    def _commit(self, _ev: dict[str, Any]) -> list[Update]:
-        item = self._item()
-        power, setpoint = self.pending_power, self.pending_setpoint
-
-        def change(item: FakeUnit = item) -> None:
-            if power is not None:
-                item.running = power == 0
-            if setpoint is not None and item.running:
-                item.setpoint = setpoint
-
-        self._later(change)
-        self.pending_setpoint = self.pending_power = None
-        return []
-
-    # -- settings dialog (screen 7) -------------------------------------------------
-    def _open_dialog(self, _ev: dict[str, Any]) -> list[Update]:
-        self._check_overlap()
-        u = self._item()
-        self.dialog = {"ticks": set(), "power": None, "mode": None, "fan": u.fan_icon}
-        parts = [
-            (0, "LABEL", "Gedetailleerde instellingen : " + u.name),
-            (2, "LABEL", "Aan/uit"),
-            (3, "ENABLED", 0),
-            (3, "CHECK_STATE", 1 if u.running else 0),
-            (4, "ENABLED", 0),
-            (4, "CHECK_STATE", 0 if u.running else 1),
-            (17, "LABEL", "Bedieningsmodus"),
-            (18, "ENABLED", 0),
-            (18, "COMBO_STRS", list(u.modes)),
-            (18, "SINGLE_SELIDX", u.modes.index(u.mode)),
-            (28, "LABEL", "Ventilatie"),
-            (28, "VISIBLED", 1 if u.fan_icon else 0),
-            (31, "ICONID", u.fan_icon or 3011),
-        ]
-        return [("OPEN", 7, [0], parts)]
-
-    def _dialog_event(self, ev: dict[str, Any]) -> list[Update]:
-        part, event, number = ev["part"], ev["event"], ev["number"]
-        d, u = self.dialog, self._item()
-        updates: list[Update] = [("UPDATE", 7, [], [])]
-        if d is None:
-            updates = []
-        elif part in {2, 17, 28} and event == 1:  # checkboxes
-            (d["ticks"].add if number else d["ticks"].discard)(part)
-            updates = [("UPDATE", 7, [], [(part, "CHECK_STATE", number)])]
-        elif part in {3, 4} and 2 in d["ticks"]:
-            d["power"] = part == 3
-        elif part == 18 and 17 in d["ticks"]:
-            d["mode"] = u.modes[number]
-        elif part == 29 and 28 in d["ticks"] and d["fan"]:
-            order = [3009, 3011, 3013, 3015]
-            d["fan"] = order[(order.index(d["fan"]) + 1) % 4]
-            updates = [("UPDATE", 7, [], [(31, "ICONID", d["fan"])])]
-        elif part == 5 and not d.get("confirming"):
-            # OK asks for confirmation first, like the real iTM.
-            d["confirming"] = True
-            confirm = [87, 2, "Instelling uitvoeren?", "Bevestigen", "Ja", "Nee"]
-            updates = [("DLG_OPEN", 7, confirm, [])]
-        elif part == 87 and d.get("confirming") and event == 2:  # "Nee": back
-            d["confirming"] = False
-            updates = [("DLG_CLOSE", 7, [87, 2], [])]
-        elif (part == 87 and d.get("confirming") and event == 1) or part == 6:
-            # "Ja" applies the settings, cancel (6) drops them.
-            if part == 87:
-                self._later(self._dialog_change(u, dict(d)))
-            self.dialog = None
-            updates = [("CLOSE", 7, [], []), ("UPDATE", 4, [], self._panel_delta())]
-        return updates
-
-    @staticmethod
-    def _dialog_change(u: FakeUnit, d: dict[str, Any]) -> Callable[[], None]:
-        def change() -> None:
-            if d["power"] is not None:
-                u.running = d["power"]
-            if d["mode"] is not None:
-                u.mode = d["mode"]
-            if 28 in d["ticks"] and d["fan"]:
-                u.fan_icon = d["fan"]
-
-        return change
-
-    def _later(self, change: Callable[[], None]) -> None:
-        if self.latency_logins:
-            self._pending.append([self.latency_logins, change, self._item()])
-        else:
-            change()
-
-    def _check_overlap(self) -> None:
-        if any(p[2] is self._item() for p in self._pending):
-            self.overlaps += 1
-
-    # -- model -> parts -------------------------------------------------------------
-    def _item(self) -> FakeUnit:
-        return cast("FakeUnit", self.path[-1].children[self.selected])
-
-    def _icons(self) -> dict[str, Any]:
-        icons = []
-        for c in self.path[-1].children:
-            if isinstance(c, FakeZone):
-                icons.append([c.name, 1000, 0])
-            else:
-                icons.append([c.name, 2114, 0 if c.running else 2])
-        return {"icons": icons, "selected": self.selected}
-
-    def _panel_delta(self) -> list[tuple[int, str, Any]]:
-        children = self.path[-1].children
-        item = children[self.selected] if children else None
-        full: dict[tuple[int, str], Any]
-        if isinstance(item, FakeUnit):
-            full = {
-                (0, "LABEL"): item.name,
-                (1, "ICONID_MODE"): [2114, 0 if item.running else 2],
-                (4, "LABEL"): f"{item.temp:.1f}°C",
-                (5, "LABEL"): item.mode,
-                (9, "COMBO_STRS"): POWER_OPTIONS,
-                (9, "SINGLE_SELIDX"): 0 if item.running else 3,
-                (11, "COMBO_NUMS"): list(item.setpoint_range),
-                (11, "SINGLE_SELIDX"): item.setpoint_range.index(item.setpoint),
-                (14, "ICONID"): item.fan_icon or 3011,
-                (2, "VISIBLED"): 0,
-                (19, "VISIBLED"): 0,
-                (4, "VISIBLED"): 1,
-                (5, "VISIBLED"): 1,
-            }
-        else:
-            full = {
-                (0, "LABEL"): item.name if item else "",
-                (4, "VISIBLED"): 0,
-                (5, "VISIBLED"): 0,
-            }
-        delta = [(p, t, v) for (p, t), v in full.items() if self.shown.get((p, t)) != v]
-        self.shown.update(full)
-        return delta
 
     # -- encoding -------------------------------------------------------------------
     @staticmethod
@@ -385,7 +232,9 @@ class FakeITM:  # pylint: disable=too-many-instance-attributes
         return w.buf + "\0"
 
 
-def _encode_data(w: Writer, kind: str, data: list[Any]) -> None:
+def _encode_data(  # noqa: PLR0912, PLR0915  # pylint: disable=too-many-branches,too-many-statements
+    w: Writer, kind: str, data: list[Any]
+) -> None:
     if kind == "OPEN":
         w.int(data[0])
     elif kind == "LOGIN":
@@ -399,11 +248,66 @@ def _encode_data(w: Writer, kind: str, data: list[Any]) -> None:
     elif kind == "DLG_CLOSE":
         w.short(data[0])
         w.short(data[1])
+    elif kind == "DLG_OPEN" and data[1] == 9:  # DATE: N S + 9 H + h + 13 S
+        w.short(data[0])
+        w.short(data[1])
+        w.int(data[2])
+        w.string(data[3])
+        for n in data[4:13]:
+            w.short(n)
+        w.short(0)
+        for text in [*data[13:], *[""] * 13][:13]:
+            w.string(text)
+    elif kind == "DLG_OPEN" and data[1] == 4:  # CHARINPUT, see _DIALOG_LAYOUTS
+        w.short(data[0])
+        w.short(data[1])
+        w.string(data[2])
+        w.string(data[3])
+        for n in data[4:9]:
+            w.short(n)
+        w.short(0)
+        for text in data[9:23]:
+            w.string(text)
+        w.string("")
+        w.string("")
+        w.string("")
+        w.string(data[23])
+    elif kind == "DLG_OPEN" and data[1] in {5, 8}:  # PASSWORD, TIME: by layout
+        w.short(data[0])
+        w.short(data[1])
+        values = iter(data[2:])
+        for code in _DIALOG_LAYOUTS[data[1]]:
+            value = next(values) if code.isupper() else None
+            if code.upper() == "S":
+                w.string(value or "")
+            elif code.upper() == "H":
+                w.short(value or 0)
+            else:
+                w.int(value or 0)
+    elif kind == "DLG_OPEN" and data[1] == 6:  # NUMBER: NSNNNNNNHH + 11 S
+        w.short(data[0])
+        w.short(data[1])
+        w.int(data[2])
+        w.string(data[3])
+        for n in data[4:10]:
+            w.int(n)
+        w.short(data[10])
+        w.short(data[11])
+        for text in data[12:23]:
+            w.string(text)
     elif kind == "DLG_OPEN":
         w.short(data[0])
         w.short(data[1])
-        for s in data[2:]:
-            w.string(s)
+        for v in data[2:]:
+            if isinstance(v, int):
+                w.int(v)
+            else:
+                w.string(v)
+    elif kind == "DLG_UPDATE":
+        w.short(data[0])
+        w.short(data[1])
+        if data[1] == 11:
+            w.int(data[2])
 
 
 def _encode_part(w: Writer, ptype: str, v: Any) -> None:
@@ -422,12 +326,110 @@ def _encode_part(w: Writer, ptype: str, v: Any) -> None:
         w.int(len(v))
         for n in v:
             w.int(n)
-    elif ptype == "ICONPANEL":
-        w.int(len(v["icons"]))
-        for name, a, b in v["icons"]:
-            w.string(name)
-            w.short(a)
-            w.short(b)
-        w.int(v["selected"])
+    elif ptype in _ENCODERS:
+        _ENCODERS[ptype](w, v)
     else:
         raise NotImplementedError(ptype)
+
+
+def _encode_iconpanel(w: Writer, v: dict[str, Any]) -> None:
+    w.int(len(v["icons"]))
+    for name, a, b in v["icons"]:
+        w.string(name)
+        w.short(a)
+        w.short(b)
+    w.int(v["selected"])
+
+
+def _encode_list_column(w: Writer, v: list[list[Any]]) -> None:
+    w.int(len(v))
+    for name, *shorts in v:
+        w.string(name)
+        for n in shorts:
+            w.short(n)
+
+
+def _encode_list_row(w: Writer, v: dict[str, Any]) -> None:
+    rows = v["rows"]
+    ncols = len(rows[0]["text"]) if rows else 0
+    w.short(len(rows))
+    w.short(ncols)
+    for row in rows:
+        for text in row["text"]:
+            w.string(text)
+        for n in row["a"]:
+            w.short(n)
+        for n in row["b"]:
+            w.short(n)
+    w.int(len(v["selected"]))
+    for n in v["selected"]:
+        w.int(n)
+
+
+def _encode_pntlist(w: Writer, v: dict[str, Any]) -> None:
+    w.int(len(v["cols"]))
+    for name, width in v["cols"]:
+        w.string(name)
+        w.int(width)
+    w.short(v["sort"][0])
+    w.short(v["sort"][1])
+    w.int(len(v["rows"]))
+    for row in v["rows"]:
+        for text, a, b in row:
+            w.string(text)
+            w.short(a)
+            w.short(b)
+    w.int(v["selected"])
+
+
+def _encode_tab_name(w: Writer, v: list[str]) -> None:
+    w.int(len(v))
+    for name in v:
+        w.string(name)
+
+
+def _encode_tab_visible(w: Writer, v: list[Any]) -> None:
+    w.short(v[0])
+    w.short(len(v[1]))
+    for n in v[1]:
+        w.int(n)
+
+
+def _encode_schedule_panel(w: Writer, v: list[Any]) -> None:
+    w.int(len(v[0]))
+    for state, name, start, end in v[0]:
+        w.int(state)
+        w.string(name)
+        w.string(start)
+        w.string(end)
+    w.int(v[1])
+
+
+def _encode_timeline_bar(w: Writer, v: list[list[int]]) -> None:
+    w.int(len(v))
+    for entry in v:
+        for n in entry:
+            w.short(n)
+
+
+def _encode_list_cell(w: Writer, v: list[list[Any]]) -> None:
+    w.int(len(v))
+    for row, col, text, a, b in v:
+        w.short(row)
+        w.short(col)
+        w.string(text)
+        w.short(a)
+        w.short(b)
+
+
+_ENCODERS: dict[str, Callable[[Writer, Any], None]] = {
+    "LIST_CELL": _encode_list_cell,
+    "TIMELINE_BAR": _encode_timeline_bar,
+    "TAB_NAME": _encode_tab_name,
+    "TAB_VISIBLE": _encode_tab_visible,
+    "SCHEDULE_PANEL": _encode_schedule_panel,
+    "ICONPANEL": _encode_iconpanel,
+    "PNTLIST": _encode_pntlist,
+    "LIST_COLUMN": _encode_list_column,
+    "LIST_ROW": _encode_list_row,
+}

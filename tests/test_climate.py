@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
     from .fake_itm import FakeITM
 
-ROOM = "climate.meeting_room"  # 1:1-04, running, cooling
+ROOM = "climate.ac_05"  # 1:1-04, running, cooling
 STOPPED = "climate.1_1_09"  # 1:1-09, stopped, no description
 
 
@@ -48,9 +48,9 @@ async def test_climate_entities(hass: HomeAssistant, itm: FakeITM) -> None:
     """Test the state of the units."""
     state = state_of(hass, ROOM)
     assert state.state == HVACMode.COOL
-    assert state.attributes["temperature"] == 20
+    assert state.attributes["temperature"] == 23
     assert state.attributes["current_temperature"] == 21.0
-    assert (state.attributes["min_temp"], state.attributes["max_temp"]) == (20, 25)
+    assert (state.attributes["min_temp"], state.attributes["max_temp"]) == (19, 27)
     assert state.attributes["itm_name"] == "1:1-04"
     assert "error_code" not in state.attributes
     stopped = state_of(hass, STOPPED)
@@ -82,8 +82,8 @@ async def test_unknown_mode_label_is_not_reported_as_heat_cool(
     hass: HomeAssistant, itm: FakeITM, mock_config_entry: MockConfigEntry
 ) -> None:
     """Test a mode label the integration does not know (e.g. another language)."""
-    itm.units[1].modes = ("Ventilator", "Koelen", "Verwarmen", "Iets anders")
-    itm.units[1].mode = "Iets anders"
+    itm.units[1].modes = ("Fan", "Cool", "Heat", "Something else")
+    itm.units[1].mode = "Something else"
     mock_config_entry.add_to_hass(hass)
     await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
@@ -142,7 +142,7 @@ async def test_set_temperature_with_mode_starts_a_stopped_unit(
     itm.latency_logins = 0
     await _call(hass, SERVICE_SET_FAN_MODE, ROOM, **{ATTR_FAN_MODE: "low"})
     unit = itm.units[2]
-    assert (unit.running, unit.mode) == (True, "Verwarmen")
+    assert (unit.running, unit.mode) == (True, "Heat")
     assert itm.overlaps == 0
     state = state_of(hass, STOPPED)
     assert state.state == HVACMode.HEAT
@@ -153,10 +153,10 @@ async def test_set_temperature_with_mode_starts_a_stopped_unit(
 async def test_set_hvac_mode(hass: HomeAssistant, itm: FakeITM) -> None:
     """Test changing the operation mode."""
     await _call(hass, SERVICE_SET_HVAC_MODE, ROOM, **{ATTR_HVAC_MODE: HVACMode.HEAT})
-    assert itm.units[1].mode == "Verwarmen"
+    assert itm.units[1].mode == "Heat"
     state = state_of(hass, ROOM)
     assert state.state == HVACMode.HEAT
-    assert state.attributes["itm_mode"] == "Verwarmen"
+    assert state.attributes["itm_mode"] == "Heat"
 
 
 @pytest.mark.usefixtures("init_integration")
@@ -166,7 +166,7 @@ async def test_set_hvac_mode_starts_stopped_unit(
     """Test choosing a mode starts a stopped unit in one write."""
     await _call(hass, SERVICE_SET_HVAC_MODE, STOPPED, **{ATTR_HVAC_MODE: HVACMode.HEAT})
     assert itm.units[2].running
-    assert itm.units[2].mode == "Verwarmen"
+    assert itm.units[2].mode == "Heat"
     assert state_of(hass, STOPPED).state == HVACMode.HEAT
 
 
@@ -195,7 +195,7 @@ async def test_set_hvac_mode_already_in_that_mode_writes_nothing(
     before = len(itm.requests)
     await _call(hass, SERVICE_SET_HVAC_MODE, ROOM, **{ATTR_HVAC_MODE: HVACMode.COOL})
     assert not any(r["screen"] == 7 for r in itm.requests[before:])
-    assert itm.units[1].mode == "Koelen"
+    assert itm.units[1].mode == "Cool"
 
 
 @pytest.mark.usefixtures("init_integration")
@@ -260,14 +260,14 @@ async def test_setpoint_outside_the_current_range(
 
     The range read while writing is shown right away.
     """
-    assert state_of(hass, ROOM).attributes["min_temp"] == 20
+    assert state_of(hass, ROOM).attributes["min_temp"] == 19
     itm.units[1].setpoint_range = (21, 22, 23, 24)  # the iTM changed the range
     itm.units[1].setpoint = 22
     with pytest.raises(ServiceValidationError) as err:
         await _call(hass, SERVICE_SET_TEMPERATURE, ROOM, **{ATTR_TEMPERATURE: 20})
     assert err.value.translation_key == "setpoint_out_of_range"
     assert err.value.translation_placeholders == {
-        "unit": "Meeting room",
+        "unit": "AC 05",
         "temperature": "20",
         "min": "21",
         "max": "24",
@@ -280,7 +280,7 @@ async def test_setpoint_outside_the_current_range(
 @pytest.mark.usefixtures("init_integration")
 async def test_refused_command_is_a_ha_error(hass: HomeAssistant, itm: FakeITM) -> None:
     """Test a command the iTM refuses."""
-    itm.units[1].modes = ("Ventilator", "Koelen")  # no longer offers heating
+    itm.units[1].modes = ("Fan", "Cool")  # no longer offers heating
     with pytest.raises(HomeAssistantError) as err:
         await _call(
             hass, SERVICE_SET_HVAC_MODE, ROOM, **{ATTR_HVAC_MODE: HVACMode.HEAT}

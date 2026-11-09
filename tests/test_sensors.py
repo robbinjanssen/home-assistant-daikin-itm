@@ -25,13 +25,13 @@ async def test_sensors(
     await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
 
-    state = state_of(hass, "sensor.meeting_room_room_temperature")
+    state = state_of(hass, "sensor.ac_05_room_temperature")
     assert state.state == "19.5"
     assert state.attributes["state_class"] == "measurement"
-    malfunction = state_of(hass, "binary_sensor.meeting_room_malfunction")
+    malfunction = state_of(hass, "binary_sensor.ac_05_malfunction")
     assert malfunction.state == "off"
     assert malfunction.attributes["error_code"] is None
-    assert state_of(hass, "binary_sensor.meeting_room_filter").state == "off"
-    entity = er.async_get(hass).async_get("binary_sensor.meeting_room_filter")
+    assert state_of(hass, "binary_sensor.ac_05_filter").state == "off"
+    entity = er.async_get(hass).async_get("binary_sensor.ac_05_filter")
     assert entity is not None
     assert entity.entity_category is EntityCategory.DIAGNOSTIC
