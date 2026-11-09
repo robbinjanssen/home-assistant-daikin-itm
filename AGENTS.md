@@ -132,7 +132,9 @@ work on a branch.
   `hotfix`, `documentation`, `enhancement`, `refactor`, `performance`,
   `new-feature`, `maintenance`, `ci`, `dependencies`, `skip-changelog`.
 - Release Drafter derives the next version from the labels
-  (`breaking-change` → major). Bump `version` in `manifest.json` and
-  `pyproject.toml` to match before a release.
+  (`breaking-change` → major). The version comes from the release tag: the
+  release workflow writes it into `manifest.json` and attaches
+  `daikin_itm.zip`, which HACS installs (`zip_release` in `hacs.json`). Leave
+  `version` at `0.0.0` in `manifest.json` and `pyproject.toml`.
 - Renovate keeps dependencies up to date and automerges minor and patch
   updates.
