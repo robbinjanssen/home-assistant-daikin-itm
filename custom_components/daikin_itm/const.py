@@ -17,6 +17,9 @@ SCAN_INTERVAL = timedelta(seconds=60)
 # the units' locks, limits and airflow direction) take about twenty requests in two
 # sessions, and rarely change: read them far less often.
 SETTINGS_SCAN_INTERVAL = timedelta(minutes=15)
+# The system settings screens read with the rest of the settings, in the same
+# session: the touch panel, the confirm dialogs and remote management.
+SYSTEM_SCREENS = ("hardware", "screensaver", "confirm_dialogs", "remote_management")
 # Changes take 3-8 seconds to reach a unit over the Daikin bus. After a change the
 # entities show it right away and the next poll, which confirms it, runs this soon.
 CONFIRM_INTERVAL = timedelta(seconds=10)

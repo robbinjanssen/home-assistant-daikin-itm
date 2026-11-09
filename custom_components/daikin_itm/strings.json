@@ -151,6 +151,9 @@
       },
       "emergency_stop": {
         "name": "Emergency stop"
+      },
+      "remote_management": {
+        "name": "Remote management"
       }
     },
     "switch": {
@@ -168,6 +171,12 @@
       },
       "changeover": {
         "name": "Changeover {name}"
+      },
+      "confirm_dialogs": {
+        "name": "Confirmation dialogs"
+      },
+      "screensaver_off_on_error": {
+        "name": "End screensaver on error"
       }
     },
     "climate": {
@@ -208,6 +217,33 @@
       },
       "overtime_duration": {
         "name": "Overtime duration"
+      },
+      "setback_high_up": {
+        "name": "Setback high: setpoint up"
+      },
+      "setback_high_back": {
+        "name": "Setback high: setpoint down"
+      },
+      "setback_low_up": {
+        "name": "Setback low: setpoint up"
+      },
+      "setback_low_back": {
+        "name": "Setback low: setpoint down"
+      },
+      "setback_recovery_cool": {
+        "name": "Setback recovery cooling"
+      },
+      "setback_recovery_heat": {
+        "name": "Setback recovery heating"
+      },
+      "panel_backlight": {
+        "name": "Touch panel backlight"
+      },
+      "panel_buzzer_volume": {
+        "name": "Touch panel buzzer volume"
+      },
+      "panel_key_click_volume": {
+        "name": "Touch panel key click volume"
       }
     },
     "select": {
@@ -232,6 +268,30 @@
           "allowed": "Allowed",
           "forbidden": "Forbidden"
         }
+      },
+      "panel_buzzer_duration": {
+        "name": "Touch panel buzzer duration",
+        "state": {
+          "1": "1 minute",
+          "3": "3 minutes",
+          "5": "5 minutes",
+          "continuous": "Until stopped"
+        }
+      },
+      "panel_screensaver_mode": {
+        "name": "Touch panel screensaver",
+        "state": {
+          "off": "Off",
+          "backlight_off": "Backlight off",
+          "screen_1": "Screen 1",
+          "screen_2": "Screen 2",
+          "screen_3": "Screen 3"
+        }
+      }
+    },
+    "button": {
+      "sync_clock": {
+        "name": "Synchronize clock"
       }
     }
   },

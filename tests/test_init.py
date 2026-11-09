@@ -90,8 +90,10 @@ async def test_renamed_unit_keeps_its_entities(
     )
     # Per unit: climate, room temperature, malfunction, filter, auto mode sensor and
     # switch, three remote locks, two limit switches and four limits; and the iTM's
-    # outdoor temperature, three schedule programs, three indicators and overtime.
-    assert len(entities) == 3 * 15 + 8
+    # outdoor temperature, three schedule programs, three indicators and overtime,
+    # six setback settings, five touch panel settings, the confirm dialogs, remote
+    # management and the clock button.
+    assert len(entities) == 3 * 15 + 8 + 15
     await hass.services.async_call(
         "climate",
         "set_temperature",

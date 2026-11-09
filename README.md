@@ -35,6 +35,15 @@ The iTM's own device has an **Outdoor temperature** sensor, which auto mode uses
 - the **Overtime duration** (configuration): how long the overtime timer keeps a unit running.
 - **Energy saving**, **Error** and **Emergency stop** sensors: the indicators of the iTM's menu bar.
 - an **alarm** sensor per analog input in the zone, on while its value is outside its limits.
+- the **setback** offsets ("setpoint up" and "setpoint down" for setback high and low) and the setback
+  **recovery** temperatures for cooling and heating (configuration), within the values the iTM offers.
+- the touch panel's **backlight**, **buzzer volume**, **key click volume**, **buzzer duration** and
+  **screensaver**, whether an error ends the screensaver, and the **Confirmation dialogs** switch
+  (configuration).
+- a **Synchronize clock** button, which sets the iTM's clock to Home Assistant's local time. The iTM's
+  schedules run on its own clock, which drifts.
+- a **Remote management** sensor (diagnostic): whether the iTM is connected to Daikin's remote
+  management. The iTM's firmware version shows on its device.
 
 Devices and entities are identified by the unit's bus address (e.g. `1:1-04`, from the iTM's Details
 screen), so renaming a unit in the iTM keeps its entities and history. Devices are named after the
@@ -124,8 +133,8 @@ uses up the unit's limited number of setting changes. Use one or the other: disa
   unavailable. If logins keep being refused for 30 minutes, a repair issue tells you: either someone is
   still logged in, or the credentials have changed.
 - **Settings are read every 15 minutes.** The schedule programs, changeover groups, overtime duration,
-  the menu bar's indicators and the units' remote locks, limits and airflow direction take about twenty
-  requests to read, so Home Assistant reads them every 15 minutes instead of every minute. A change made
+  setback, touch panel settings, the menu bar's indicators and the units' remote locks, limits and
+  airflow direction take about thirty requests to read, so Home Assistant reads them every 15 minutes instead of every minute. A change made
   from Home Assistant shows right away, as the iTM reads it back; a change made on the iTM itself shows
   within 15 minutes.
 - **Changes take a while.** Writing a change to the iTM takes a few seconds, and it takes another 3-8
