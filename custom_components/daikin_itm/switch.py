@@ -1,6 +1,7 @@
 """Per unit: setpoint limits, and whether auto mode may ventilate.
 
-On the iTM's device: schedule programs and auto changeover groups.
+On the iTM's device: schedule programs, auto changeover groups, and the touch
+panel's confirm dialogs and screensaver.
 """
 
 from __future__ import annotations
@@ -87,6 +88,33 @@ async def async_setup_entry(
             async_add_entities,
             lambda: [g.name for g in settings.data.config.changeover_groups],
             lambda name: [ItmChangeoverSwitch(settings, name)],
+        )
+    )
+
+    def panel() -> list[str]:
+        system = settings.data.config.system
+        if system is None:
+            return []
+        found = []
+        if system.confirm_dialogs is not None:
+            found.append("confirm_dialogs")
+        if (
+            system.screensaver is not None
+            and system.screensaver.off_on_error is not None
+        ):
+            found.append("screensaver_off_on_error")
+        return found
+
+    entry.async_on_unload(
+        add_entities_for_new_items(
+            settings,
+            async_add_entities,
+            panel,
+            lambda item: [
+                ItmConfirmDialogsSwitch(settings)
+                if item == "confirm_dialogs"
+                else ItmScreensaverOnErrorSwitch(settings)
+            ],
         )
     )
 
@@ -313,3 +341,82 @@ class ItmChangeoverSwitch(ItmHubEntity["ItmSettingsCoordinator"], SwitchEntity):
     async def async_turn_off(self, **_kwargs: Any) -> None:
         """Disable the group."""
         await self._async_set(enabled=False)
+
+
+class ItmConfirmDialogsSwitch(ItmHubEntity["ItmSettingsCoordinator"], SwitchEntity):
+    """Whether the iTM asks for confirmation before it applies a setting."""
+
+    _attr_translation_key = "confirm_dialogs"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: ItmSettingsCoordinator) -> None:
+        """Initialize the switch.
+
+        Args:
+        ----
+            coordinator: The settings coordinator.
+
+        """
+        super().__init__(coordinator, "confirm_dialogs")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return if the confirm dialogs are on."""
+        system = self.coordinator.data.config.system
+        return system.confirm_dialogs if system else None
+
+    async def _async_set(self, *, on: bool) -> None:
+        await self.coordinator.async_write(
+            lambda: self.coordinator.client.set_confirm_dialogs(enabled=on),
+            lambda data, result: self.coordinator.replace_system(
+                data, confirm_dialogs=result
+            ),
+        )
+
+    async def async_turn_on(self, **_kwargs: Any) -> None:
+        """Switch the confirm dialogs on."""
+        await self._async_set(on=True)
+
+    async def async_turn_off(self, **_kwargs: Any) -> None:
+        """Switch the confirm dialogs off."""
+        await self._async_set(on=False)
+
+
+class ItmScreensaverOnErrorSwitch(ItmHubEntity["ItmSettingsCoordinator"], SwitchEntity):
+    """Whether the touch panel's screensaver ends when an error occurs."""
+
+    _attr_translation_key = "screensaver_off_on_error"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: ItmSettingsCoordinator) -> None:
+        """Initialize the switch.
+
+        Args:
+        ----
+            coordinator: The settings coordinator.
+
+        """
+        super().__init__(coordinator, "screensaver_off_on_error")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return if an error ends the screensaver."""
+        system = self.coordinator.data.config.system
+        screensaver = system.screensaver if system else None
+        return screensaver.off_on_error if screensaver else None
+
+    async def _async_set(self, *, on: bool) -> None:
+        await self.coordinator.async_write(
+            lambda: self.coordinator.client.set_screensaver(off_on_error=on),
+            lambda data, result: self.coordinator.replace_system(
+                data, screensaver=result
+            ),
+        )
+
+    async def async_turn_on(self, **_kwargs: Any) -> None:
+        """Let an error end the screensaver."""
+        await self._async_set(on=True)
+
+    async def async_turn_off(self, **_kwargs: Any) -> None:
+        """Keep the screensaver on errors."""
+        await self._async_set(on=False)

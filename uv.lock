@@ -2460,7 +2460,7 @@ wheels = [
 [[package]]
 name = "python-daikin-itm"
 version = "0.0.0"
-source = { git = "https://github.com/robbinjanssen/python-daikin-itm.git?branch=main#270ed8d071ff15fdfbae6c598485f53f87bc17ab" }
+source = { git = "https://github.com/robbinjanssen/python-daikin-itm.git?branch=main#e60bdf007a6f03a14448425dc5d21f18e3179867" }
 dependencies = [
     { name = "aiohttp" },
 ]

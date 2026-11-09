@@ -80,6 +80,20 @@ async def async_setup_entry(
             ],
         )
     )
+    entry.async_on_unload(
+        add_entities_for_new_items(
+            settings,
+            async_add_entities,
+            lambda: (
+                ["remote_management"]
+                if settings.data.config.system is not None
+                and settings.data.config.system.remote_management is not None
+                and settings.data.config.system.remote_management.connected is not None
+                else []
+            ),
+            lambda _: [ItmRemoteManagementSensor(settings)],
+        )
+    )
 
 
 class ItmMalfunctionSensor(ItmEntity, BinarySensorEntity):
@@ -198,3 +212,37 @@ class ItmIndicatorSensor(ItmHubEntity["ItmSettingsCoordinator"], BinarySensorEnt
         indicators: ItmIndicators = self.coordinator.data.config.indicators
         on: bool = getattr(indicators, self._field)
         return on
+
+
+class ItmRemoteManagementSensor(
+    ItmHubEntity["ItmSettingsCoordinator"], BinarySensorEntity
+):
+    """Whether the iTM is connected to Daikin's remote management service."""
+
+    _attr_translation_key = "remote_management"
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: ItmSettingsCoordinator) -> None:
+        """Initialize the sensor.
+
+        Args:
+        ----
+            coordinator: The settings coordinator.
+
+        """
+        super().__init__(coordinator, "remote_management")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return if the iTM is connected."""
+        system = self.coordinator.data.config.system
+        remote = system.remote_management if system else None
+        return remote.connected if remote else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the status as the iTM shows it."""
+        system = self.coordinator.data.config.system
+        remote = system.remote_management if system else None
+        return {"status": remote.status if remote else None}

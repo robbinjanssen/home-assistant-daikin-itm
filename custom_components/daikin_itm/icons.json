@@ -6,6 +6,9 @@
       },
       "energy_saving": {
         "default": "mdi:leaf"
+      },
+      "remote_management": {
+        "default": "mdi:remote-desktop"
       }
     },
     "sensor": {
@@ -40,6 +43,12 @@
       },
       "changeover": {
         "default": "mdi:sun-snowflake-variant"
+      },
+      "confirm_dialogs": {
+        "default": "mdi:message-question-outline"
+      },
+      "screensaver_off_on_error": {
+        "default": "mdi:monitor-alert"
       }
     },
     "select": {
@@ -51,6 +60,12 @@
       },
       "setpoint_lock": {
         "default": "mdi:remote"
+      },
+      "panel_buzzer_duration": {
+        "default": "mdi:timer-music-outline"
+      },
+      "panel_screensaver_mode": {
+        "default": "mdi:monitor-shimmer"
       }
     },
     "number": {
@@ -68,6 +83,38 @@
       },
       "overtime_duration": {
         "default": "mdi:timer-plus-outline"
+      },
+      "setback_high_up": {
+        "default": "mdi:thermometer-chevron-up"
+      },
+      "setback_high_back": {
+        "default": "mdi:thermometer-chevron-down"
+      },
+      "setback_low_up": {
+        "default": "mdi:thermometer-chevron-up"
+      },
+      "setback_low_back": {
+        "default": "mdi:thermometer-chevron-down"
+      },
+      "setback_recovery_cool": {
+        "default": "mdi:snowflake-thermometer"
+      },
+      "setback_recovery_heat": {
+        "default": "mdi:sun-thermometer"
+      },
+      "panel_backlight": {
+        "default": "mdi:brightness-6"
+      },
+      "panel_buzzer_volume": {
+        "default": "mdi:volume-high"
+      },
+      "panel_key_click_volume": {
+        "default": "mdi:gesture-tap"
+      }
+    },
+    "button": {
+      "sync_clock": {
+        "default": "mdi:clock-check-outline"
       }
     }
   }
