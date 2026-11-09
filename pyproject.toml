@@ -24,8 +24,8 @@ dev = [
 package = false
 
 [tool.uv.sources]
-# Develop against the library's main branch, the manifest pins the release.
-python-daikin-itm = { git = "https://github.com/robbinjanssen/python-daikin-itm.git", branch = "main" }
+# TEMPORARY: develop against python-daikin-itm PR #3 until it is merged and released.
+python-daikin-itm = { git = "https://github.com/robbinjanssen/python-daikin-itm.git", branch = "config-for-home-assistant" }
 
 [tool.mypy]
 # Specify the target platform details in config, so your developers are
