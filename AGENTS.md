@@ -117,10 +117,11 @@ work on a branch.
 
 ## Tests
 
-- `tests/fake_itm.py` is a copy of the library's simulated iTM (one session,
-  delta replies, ignored setpoints on stopped units, changes that reach a unit
-  only after `latency_logins` further logins). Keep it in sync with the
-  library's `tests/fake_itm.py`.
+- `tests/fake_itm.py` and the `tests/fake_itm_*.py` modules it imports are
+  copies of the library's simulated iTM (one session, delta replies, ignored
+  setpoints on stopped units, changes that reach a unit only after
+  `latency_logins` further logins). Keep them in sync with the library's
+  `tests/`: copy all of them when the library changes.
 - The `itm` fixture patches `daikin_itm.ItmClient` to talk to the simulated
   iTM without delays; `init_integration` sets up a config entry against it.
 - Add a test for every bug fix that fails without the fix.

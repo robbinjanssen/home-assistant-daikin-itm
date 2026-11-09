@@ -1146,7 +1146,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "python-daikin-itm", git = "https://github.com/robbinjanssen/python-daikin-itm.git?branch=extend-itm-web-ui-coverage" }]
+requires-dist = [{ name = "python-daikin-itm", git = "https://github.com/robbinjanssen/python-daikin-itm.git?branch=main" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2460,7 +2460,7 @@ wheels = [
 [[package]]
 name = "python-daikin-itm"
 version = "0.0.0"
-source = { git = "https://github.com/robbinjanssen/python-daikin-itm.git?branch=extend-itm-web-ui-coverage#eea70c222af7a86f59d106ce18a443437410770a" }
+source = { git = "https://github.com/robbinjanssen/python-daikin-itm.git?branch=main#270ed8d071ff15fdfbae6c598485f53f87bc17ab" }
 dependencies = [
     { name = "aiohttp" },
 ]
