@@ -120,7 +120,7 @@ async def async_setup_entry(
 
     def setback() -> list[str]:
         values = settings.data.config.setback
-        return [key for key in SETBACK if values.options.get(key)]
+        return [key for key in SETBACK if getattr(values, f"{key}_options")]
 
     entry.async_on_unload(
         add_entities_for_new_items(
@@ -281,7 +281,10 @@ class ItmSetbackNumber(ItmHubEntity["ItmSettingsCoordinator"], NumberEntity):
     @property
     def _options(self) -> tuple[int, ...]:
         """The values the iTM offers."""
-        return self.coordinator.data.config.setback.options.get(self._field, ())
+        options: tuple[int, ...] = getattr(
+            self.coordinator.data.config.setback, f"{self._field}_options"
+        )
+        return options
 
     @property
     def available(self) -> bool:

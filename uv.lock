@@ -2460,7 +2460,7 @@ wheels = [
 [[package]]
 name = "python-daikin-itm"
 version = "0.0.0"
-source = { git = "https://github.com/robbinjanssen/python-daikin-itm.git?branch=config-for-home-assistant#6d0c536ce366a82a0f6ef21d8b748fa8454b7762" }
+source = { git = "https://github.com/robbinjanssen/python-daikin-itm.git?branch=config-for-home-assistant#d9d9c0f3341207559d59b140905622d79c684b7f" }
 dependencies = [
     { name = "aiohttp" },
 ]
