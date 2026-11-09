@@ -1146,7 +1146,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "python-daikin-itm", git = "https://github.com/robbinjanssen/python-daikin-itm.git?branch=config-for-home-assistant" }]
+requires-dist = [{ name = "python-daikin-itm", git = "https://github.com/robbinjanssen/python-daikin-itm.git?branch=main" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2460,7 +2460,7 @@ wheels = [
 [[package]]
 name = "python-daikin-itm"
 version = "0.0.0"
-source = { git = "https://github.com/robbinjanssen/python-daikin-itm.git?branch=config-for-home-assistant#d9d9c0f3341207559d59b140905622d79c684b7f" }
+source = { git = "https://github.com/robbinjanssen/python-daikin-itm.git?branch=main#e60bdf007a6f03a14448425dc5d21f18e3179867" }
 dependencies = [
     { name = "aiohttp" },
 ]
